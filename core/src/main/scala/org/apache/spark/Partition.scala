@@ -1,0 +1,37 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.
+ * The ASF licenses this file to You under the Apache License, Version 2.0
+ * (the "License"); you may not use this file except in compliance with
+ * the License.  You may obtain a copy of the License at
+ *
+ *    http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.spark
+
+/**
+  * An identifier for a partition in an RDD.
+  * 一份待处理的原始数据会被按照相应的逻辑(例如jdbc和hdfs的split逻辑)切分成n份，
+  * 每份数据对应到RDD中的一个Partition.
+  *
+  * Partition和RDD是伴生的，即每一种RDD都有其对应的Partition实现，
+  * 所以，分析Partition主要是分析其子类
+  */
+trait Partition extends Serializable {
+  /**
+    * Get the partition's index within its parent RDD
+    * 分区序列号,从0开始,依次递增
+    */
+  def index: Int
+
+  // A better default implementation of HashCode
+  override def hashCode(): Int = index
+}
