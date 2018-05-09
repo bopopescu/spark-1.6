@@ -27,6 +27,7 @@
   </parent>
 
   <groupId>org.apache.spark</groupId>
+  <!--netty RPC网络封装-->
   <artifactId>spark-network-common_2.10</artifactId>
   <packaging>jar</packaging>
   <name>Spark Project Networking</name>

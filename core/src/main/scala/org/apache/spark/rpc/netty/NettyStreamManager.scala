@@ -26,10 +26,14 @@ import org.apache.spark.util.Utils
 
 /**
  * StreamManager implementation for serving files from a NettyRpcEnv.
+  * 作用于NettyRpcEnv,提供file下载服务
  */
 private[netty] class NettyStreamManager(rpcEnv: NettyRpcEnv)
   extends StreamManager with RpcEnvFileServer {
 
+  // NettyStreamManager和HttpBasedFileServer不同，其没有将文件写入本地，
+  // 而是使用两个属性jars和files集合保存，对应的addJar方法就是将File对象添加到集合jars中，
+  // 下载文件依靠openStream方法
   private val files = new ConcurrentHashMap[String, File]()
   private val jars = new ConcurrentHashMap[String, File]()
 
@@ -37,6 +41,7 @@ private[netty] class NettyStreamManager(rpcEnv: NettyRpcEnv)
     throw new UnsupportedOperationException()
   }
 
+  //openStream方法继承自StreamManager，StreamManager提供底层文件的下载服务，如shuffle过程中间结果的下载
   override def openStream(streamId: String): ManagedBuffer = {
     val Array(ftype, fname) = streamId.stripPrefix("/").split("/", 2)
     val file = ftype match {

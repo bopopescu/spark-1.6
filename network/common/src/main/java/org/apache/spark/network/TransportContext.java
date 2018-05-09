@@ -128,10 +128,12 @@ public class TransportContext {
    * be used to communicate on this channel. The TransportClient is directly associated with a
    * ChannelHandler to ensure all users of the same channel get the same TransportClient object.
    */
+  // 关于netty创建ServerHander,查看  https://github.com/ReactivePlatform/netty-in-action-cn/blob/840ea3a80eb45f8f33714a2aa5d6ac7d6c2d88f7/chapter2/Server/src/main/java/nia/chapter2/echoserver/EchoServer.java#L58
   public TransportChannelHandler initializePipeline(
       SocketChannel channel,
       RpcHandler channelRpcHandler) {
     try {
+      // 创建TransportChannelHandler用于处理请求
       TransportChannelHandler channelHandler = createChannelHandler(channel, channelRpcHandler);
       channel.pipeline()
         .addLast("encoder", encoder)
@@ -140,6 +142,7 @@ public class TransportContext {
         .addLast("idleStateHandler", new IdleStateHandler(0, 0, conf.connectionTimeoutMs() / 1000))
         // NOTE: Chunks are currently guaranteed to be returned in the order of request, but this
         // would require more logic to guarantee if this were not part of the same event loop.
+        // 添加 TransportChannelHandler到pipline
         .addLast("handler", channelHandler);
       return channelHandler;
     } catch (RuntimeException e) {

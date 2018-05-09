@@ -19,17 +19,15 @@ package org.apache.spark
 
 import java.io.File
 
-import org.eclipse.jetty.server.ssl.SslSocketConnector
-import org.eclipse.jetty.util.security.{Constraint, Password}
+import org.apache.spark.util.Utils
 import org.eclipse.jetty.security.authentication.DigestAuthenticator
 import org.eclipse.jetty.security.{ConstraintMapping, ConstraintSecurityHandler, HashLoginService}
-
 import org.eclipse.jetty.server.Server
 import org.eclipse.jetty.server.bio.SocketConnector
 import org.eclipse.jetty.server.handler.{DefaultHandler, HandlerList, ResourceHandler}
+import org.eclipse.jetty.server.ssl.SslSocketConnector
+import org.eclipse.jetty.util.security.{Constraint, Password}
 import org.eclipse.jetty.util.thread.QueuedThreadPool
-
-import org.apache.spark.util.Utils
 
 
 /**
@@ -59,6 +57,7 @@ private[spark] class HttpServer(
     } else {
       logInfo("Starting HTTP Server")
       val (actualServer, actualPort) =
+        // 调用HttpServer.doStart
         Utils.startServiceOnPort[Server](requestedPort, doStart, conf, serverName)
       server = actualServer
       port = actualPort
@@ -70,6 +69,8 @@ private[spark] class HttpServer(
    *
    * Note that this is only best effort in the sense that we may end up binding to a nearby port
    * in the event of port collision. Return the bound server and the actual port used.
+    *
+    * 启动jetty server,提供文件下载服务
    */
   private def doStart(startPort: Int): (Server, Int) = {
     val server = new Server()
@@ -102,6 +103,7 @@ private[spark] class HttpServer(
       server.setHandler(handlerList)
     }
 
+    // 启动jetty server
     server.start()
     val actualPort = server.getConnectors()(0).getLocalPort
 

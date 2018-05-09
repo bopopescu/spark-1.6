@@ -99,10 +99,12 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
     if (request instanceof ChunkFetchRequest) {
       processFetchRequest((ChunkFetchRequest) request);
     } else if (request instanceof RpcRequest) {
+      // 处理RPC请求
       processRpcRequest((RpcRequest) request);
     } else if (request instanceof OneWayMessage) {
       processOneWayMessage((OneWayMessage) request);
     } else if (request instanceof StreamRequest) {
+      // 处理Stream请求
       processStreamRequest((StreamRequest) request);
     } else {
       throw new IllegalArgumentException("Unknown request type: " + request);
@@ -133,6 +135,7 @@ public class TransportRequestHandler extends MessageHandler<RequestMessage> {
     final String client = NettyUtils.getRemoteAddress(channel);
     ManagedBuffer buf;
     try {
+      // StreamManager调用openStream方法，返回file对象的封装
       buf = streamManager.openStream(req.streamId);
     } catch (Exception e) {
       logger.error(String.format(

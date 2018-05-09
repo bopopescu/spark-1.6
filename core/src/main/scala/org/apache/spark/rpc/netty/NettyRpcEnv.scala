@@ -53,12 +53,17 @@ private[netty] class NettyRpcEnv(
 
   private val dispatcher: Dispatcher = new Dispatcher(this)
 
+  // NettyStreamManager借助于RpcEnv中启动的netty提供服务
   private val streamManager = new NettyStreamManager(this)
 
+  // 选择文件服务器,用于传输jar包和文件
   private val _fileServer =
+    // 根据spark.rpc.useNettyFileServer配置NettyStreamManager还是HttpBasedFileServer
     if (conf.getBoolean("spark.rpc.useNettyFileServer", false)) {
+      // netty服务器
       streamManager
     } else {
+      // jetty服务器,底层调用jetty
       new HttpBasedFileServer(conf, securityManager)
     }
 
@@ -139,6 +144,8 @@ private[netty] class NettyRpcEnv(
     // 跟踪createServer(),返回TransportServer,TransportServer构造器中调用init方法
     // org.apache.spark.network.server.TransportServer.init 方法中启动netty server
     server = transportContext.createServer(host, port, bootstraps)
+
+    // server端注册RPCEndPointVerifier,底层使用Dispather管理
     dispatcher.registerRpcEndpoint(
       RpcEndpointVerifier.NAME, new RpcEndpointVerifier(this, dispatcher))
   }
@@ -157,10 +164,15 @@ private[netty] class NettyRpcEnv(
     val endpointRef = new NettyRpcEndpointRef(conf, addr, this)
     val verifier = new NettyRpcEndpointRef(
       conf, RpcEndpointAddress(addr.rpcAddress, RpcEndpointVerifier.NAME), this)
+
+    // 发送消息CheckExistence(endpointRef.name)
+    // 检查名称为endpointRdf.name的PpcEndpoint是否存在
     verifier.ask[Boolean](RpcEndpointVerifier.CheckExistence(endpointRef.name)).flatMap { find =>
       if (find) {
+        // server端返回true, RpcEndpoint存在,返回endpointRef
         Future.successful(endpointRef)
       } else {
+        // 返回false,跑出异常
         Future.failed(new RpcEndpointNotFoundException(uri))
       }
     }(ThreadUtils.sameThread)

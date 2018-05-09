@@ -60,6 +60,7 @@ private[netty] class RemoteNettyRpcCallContext(
     senderAddress: RpcAddress)
   extends NettyRpcCallContext(senderAddress) {
 
+  // 调用RpcResponseCallback.onSuccess方法返回信息
   override protected def send(message: Any): Unit = {
     val reply = nettyEnv.serialize(message)
     callback.onSuccess(reply)

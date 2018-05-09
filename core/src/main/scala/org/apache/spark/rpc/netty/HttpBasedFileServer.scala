@@ -26,10 +26,30 @@ private[netty] class HttpBasedFileServer(conf: SparkConf, securityManager: Secur
 
   @volatile private var httpFileServer: HttpFileServer = _
 
+  /**
+    * https://blog.csdn.net/u011564172/article/details/64214915
+    * 1.driver程序启动，初始化SparkContext时启动jetty server，流程如上图①至⑨，
+    * 其中jetty server文件服务器的根目录为HttpFileServer的baseDir目录(默认为/tmp/UUID)，
+    * 下面有两个二级目录jars、files分别存放jar和file。
+    *
+    * 2.调用SparkContext的addJar方法依次将driver程序和spark-submit中指定的jar包copy到jetty
+    * 文件服务器的baseDir/jars目录下，如上图②⑩⑪⑫流程。
+    *
+    * @param file Local file to serve.
+    * @return A URI for the location of the file.
+    *
+    *  添加file到文件服务器,用于exector下载
+    */
   override def addFile(file: File): String = {
     getFileServer().addFile(file)
   }
 
+  /**
+    * 同上 addFile
+    * @param file Local file to serve.
+    * @return A URI for the location of the file.
+    *  添加jar到文件拂去其,用于Executor下载
+    */
   override def addJar(file: File): String = {
     getFileServer().addJar(file)
   }

@@ -66,6 +66,7 @@
     </dependency>
     <dependency>
       <groupId>org.apache.spark</groupId>
+      <!--netty RPC网络封装-->
       <artifactId>spark-network-common_${scala.binary.version}</artifactId>
       <version>${project.version}</version>
     </dependency>
