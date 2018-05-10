@@ -20,8 +20,13 @@ package org.apache.spark.deploy
 import scala.collection.Map
 
 private[spark] case class Command(
-    mainClass: String,
-    arguments: Seq[String],
+
+    // Spark使用DriverWrapper启动用户APP的main函数，而不是直接启动，
+    // 这是为了Driver程序和启动Driver的Worker程序共命运(源码注释中称为share fate)，
+    // 即如果此Worker挂了，对应的Driver也会停止
+    mainClass: String,                    //DriverWrapper
+
+    arguments: Seq[String],               //用户编写的main方法在argument中
     environment: Map[String, String],
     classPathEntries: Seq[String],
     libraryPathEntries: Seq[String],

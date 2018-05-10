@@ -151,6 +151,8 @@ object SparkSubmit {
    * main class.
    */
   private def submit(args: SparkSubmitArguments): Unit = {
+    // 通过prepareSubmitEnvironment(args)预处理,解析出集群管理器,部署方式,运行类,系统参数,程序参数
+    // 返回元祖
     val (childArgs, childClasspath, sysProps, childMainClass) = prepareSubmitEnvironment(args)
 
     def doRunMain(): Unit = {
@@ -522,6 +524,9 @@ object SparkSubmit {
 
     // In standalone cluster mode, use the REST client to submit the application (Spark 1.3+).
     // All Spark parameters are expected to be passed to the client through system properties.
+    // 使用RestSubmissionClient或Client提交程序
+    // 所有命令行传入的参数通过设置为环境变量的方式传递给RestSubmissionClient或Client
+    // 设置childMainClass,后续通过反射板调用main方法
     if (args.isStandaloneCluster) {
       if (args.useRest) {
         childMainClass = "org.apache.spark.deploy.rest.RestSubmissionClient"
@@ -686,6 +691,7 @@ object SparkSubmit {
     var mainClass: Class[_] = null
 
     try {
+      // 使用反射，启动childMainClass
       mainClass = Utils.classForName(childMainClass)
     } catch {
       case e: ClassNotFoundException =>
@@ -713,6 +719,7 @@ object SparkSubmit {
       printWarning("Subclasses of scala.App may not work correctly. Use a main() method instead.")
     }
 
+    // 使用反射，找到childMainClass 的 main方法
     val mainMethod = mainClass.getMethod("main", new Array[String](0).getClass)
     if (!Modifier.isStatic(mainMethod.getModifiers)) {
       throw new IllegalStateException("The main method in the given main class must be static")
@@ -728,6 +735,7 @@ object SparkSubmit {
     }
 
     try {
+      // 通过反射,启动childMainClass 的 main方法
       mainMethod.invoke(null, childArgs.toArray)
     } catch {
       case t: Throwable =>

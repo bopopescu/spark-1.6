@@ -80,8 +80,14 @@ fi
 # The launcher library will print arguments separated by a NULL character, to allow arguments with
 # characters that would be otherwise interpreted by the shell. Read that in a while loop, populating
 # an array that will be used to exec the final command.
+
+# 启动程序库将打印由NULL字符分隔的参数，以允许具有由shell解释的字符的参数。
+# 在while循环中读取它，填充将用于执行最终命令的数组。
+# 在脚本内部添加一行`set -x`查看spark-class.sh执行细节
 CMD=()
 while IFS= read -d '' -r ARG; do
   CMD+=("$ARG")
+# -cp <目录和 zip/jar 文件的类搜索路径>
 done < <("$RUNNER" -cp "$LAUNCH_CLASSPATH" org.apache.spark.launcher.Main "$@")
+# exec /home/hadoop/app/jdk1.8.0_144/bin/java -cp '/home/hadoop/app/spark-2.2.0-bin-2.6.0-cdh5.7.0/conf/:/home/hadoop/app/spark-2.2.0-bin-2.6.0-cdh5.7.0/jars/*:/home/hadoop/app/hadoop-2.6.0-cdh5.7.0/etc/hadoop/' -Xmx1G org.apache.spark.deploy.SparkSubmit --master spark://hadoop000:7077 --class org.apache.spark.examples.SparkPi --executor-memory 1G --total-executor-cores 2 examples/jars/spark-examples_2.11-2.2.0.jar 1
 exec "${CMD[@]}"

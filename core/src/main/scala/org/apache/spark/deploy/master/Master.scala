@@ -444,6 +444,7 @@ private[deploy] class Master(
       }
     }
 
+    // 接受Driver注册的消息
     case RequestSubmitDriver(description) => {
       if (state != RecoveryState.ALIVE) {
         val msg = s"${Utils.BACKUP_STANDALONE_MASTER_PREFIX}: $state. " +
@@ -451,15 +452,20 @@ private[deploy] class Master(
         context.reply(SubmitDriverResponse(self, false, None, msg))
       } else {
         logInfo("Driver submitted " + description.command.mainClass)
+        // 整理Driver信息
         val driver = createDriver(description)
+        // 持久化Driver信息,用于Master recovery时映射Driver
         persistenceEngine.addDriver(driver)
+        // 注册Driver
         waitingDrivers += driver
         drivers.add(driver)
+
+        // launch Driver和launch Executor
         schedule()
 
         // TODO: It might be good to instead have the submission client poll the master to determine
         //       the current status of the driver. For now it's simply "fire and forget".
-
+        //回复Driver注册成功
         context.reply(SubmitDriverResponse(self, true, Some(driver.id),
           s"Driver successfully submitted as ${driver.id}"))
       }

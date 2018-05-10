@@ -59,12 +59,18 @@ private class ClientEndpoint(
    private val lostMasters = new HashSet[RpcAddress]
    private var activeMasterEndpoint: RpcEndpointRef = null
 
+  // ClientEndpoint生命周期中的启动方法
+  // 注册Driver程序
   override def onStart(): Unit = {
     driverArgs.cmd match {
       case "launch" =>
         // TODO: We could add an env variable here and intercept it in `sc.addJar` that would
         //       truncate filesystem paths similar to what YARN does. For now, we just require
         //       people call `addJar` assuming the jar is in the same directory.
+
+        // Spark使用DriverWrapper启动用户APP的main函数，而不是直接启动，
+        // 这是为了Driver程序和启动Driver的Worker程序共命运(源码注释中称为share fate)，
+        // 即如果此Worker挂了，对应的Driver也会停止
         val mainClass = "org.apache.spark.deploy.worker.DriverWrapper"
 
         val classPathConf = "spark.driver.extraClassPath"
@@ -86,12 +92,16 @@ private class ClientEndpoint(
           Seq("{{WORKER_URL}}", "{{USER_JAR}}", driverArgs.mainClass) ++ driverArgs.driverOptions,
           sys.env, classPathEntries, libraryPathEntries, javaOpts)
 
+        // Driver信息的格式
         val driverDescription = new DriverDescription(
           driverArgs.jarUrl,
           driverArgs.memory,
           driverArgs.cores,
           driverArgs.supervise,
-          command)
+          command)  //command中包含mainClass,arguments,environment... ,mainClass为DriverWrapper
+
+        // 向Master发送RequestSubmitDriver消息,注册Driver
+        // 如果注册成功,Master回复SubmitDriverResponse
         ayncSendToMasterAndForwardReply[SubmitDriverResponse](
           RequestSubmitDriver(driverDescription))
 
@@ -105,6 +115,7 @@ private class ClientEndpoint(
    * Send the message to master and forward the reply to self asynchronously.
    */
   private def ayncSendToMasterAndForwardReply[T: ClassTag](message: Any): Unit = {
+    // 向masterEndpoints注册,并获得回复
     for (masterEndpoint <- masterEndpoints) {
       masterEndpoint.ask[T](message).onComplete {
         case Success(v) => self.send(v)
@@ -147,6 +158,7 @@ private class ClientEndpoint(
 
   override def receive: PartialFunction[Any, Unit] = {
 
+    // 接受Master发来的Driver注册成功消息
     case SubmitDriverResponse(master, success, driverId, message) =>
       logInfo(message)
       if (success) {
@@ -217,6 +229,8 @@ object Client {
     // scalastyle:on println
 
     val conf = new SparkConf()
+
+    //通过ClientArguments类解析Client模式传入的参数
     val driverArgs = new ClientArguments(args)
 
     if (!driverArgs.logLevel.isGreaterOrEqual(Level.WARN)) {
@@ -226,11 +240,16 @@ object Client {
     conf.set("akka.loglevel", driverArgs.logLevel.toString.replace("WARN", "WARNING"))
     Logger.getRootLogger.setLevel(driverArgs.logLevel)
 
+    // 创建RpcEnv对象
     val rpcEnv =
       RpcEnv.create("driverClient", Utils.localHostName(), 0, conf, new SecurityManager(conf))
 
+    // 获得和Master通信的RpcEndpointRef
     val masterEndpoints = driverArgs.masters.map(RpcAddress.fromSparkURL).
       map(rpcEnv.setupEndpointRef(Master.SYSTEM_NAME, _, Master.ENDPOINT_NAME))
+
+    // 注册ClientEndPoint
+    // ClientEndPoint生命周期方法onStart使用masterEndPoints,发送RequestSubmitDriver消息给Master,注册Driver
     rpcEnv.setupEndpoint("client", new ClientEndpoint(rpcEnv, driverArgs, masterEndpoints, conf))
 
     rpcEnv.awaitTermination()

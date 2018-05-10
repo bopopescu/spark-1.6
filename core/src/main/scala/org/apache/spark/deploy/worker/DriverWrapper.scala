@@ -26,6 +26,10 @@ import org.apache.spark.util.{ChildFirstURLClassLoader, MutableURLClassLoader, U
 /**
  * Utility object for launching driver programs such that they share fate with the Worker process.
  * This is used in standalone cluster mode only.
+  *
+  * Spark使用DriverWrapper启动用户APP的main函数，而不是直接启动，
+  * 这是为了Driver程序和启动Driver的Worker程序共命运(源码注释中称为share fate)，
+  * 即如果此Worker挂了，对应的Driver也会停止
  */
 object DriverWrapper {
   def main(args: Array[String]) {
