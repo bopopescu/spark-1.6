@@ -540,8 +540,12 @@ private[deploy] class Worker(
         }
       }
 
+    // Master通过RPC通信将LaunchDriver消息发送给对应的Worker节点
+    // 首先将Driver信息封装为DriverRunner，然后调用其start方法启动Driver
     case LaunchDriver(driverId, driverDesc) => {
       logInfo(s"Asked to launch driver $driverId")
+
+      // 将Driver信息封装为DriverRunner
       val driver = new DriverRunner(
         conf,
         driverId,
@@ -552,6 +556,8 @@ private[deploy] class Worker(
         workerUri,
         securityMgr)
       drivers(driverId) = driver
+
+      // 启动Driver,底层通过linux命令行启动DriverWrapper java -cp ....
       driver.start()
 
       coresUsed += driverDesc.cores

@@ -71,13 +71,16 @@ private[deploy] class DriverRunner(
   }
 
   /** Starts a thread to run and manage the driver. */
+  // 用一个新线程去开启和管理Driver
   private[worker] def start() = {
     new Thread("DriverRunner for " + driverId) {
       override def run() {
         try {
+          // 下载 Driver Jar到Worker本地, 提交的examples/jars/spark-examples*.jar
           val driverDir = createWorkingDirectory()
           val localJarFilename = downloadUserJar(driverDir)
 
+          // 替换参数中的workerURL和localJarFilename
           def substituteVariables(argument: String): String = argument match {
             case "{{WORKER_URL}}" => workerUrl
             case "{{USER_JAR}}" => localJarFilename
@@ -85,6 +88,11 @@ private[deploy] class DriverRunner(
           }
 
           // TODO: If we add ability to submit multiple jars they should also be added here
+          /**
+            * 将Driver中的参数组织为Linux命令
+            * 通过Java自行组织好的命令,使用java.lang.buildProcessBuilder运行
+            * 这一步是启动Driver,即执行提交的 examples/jars/spark-examples*.jar 包中的main方法
+            */
           val builder = CommandUtils.buildProcessBuilder(driverDesc.command, securityManager,
             driverDesc.mem, sparkHome.getAbsolutePath, substituteVariables)
           launchDriver(builder, driverDir, driverDesc.supervise)

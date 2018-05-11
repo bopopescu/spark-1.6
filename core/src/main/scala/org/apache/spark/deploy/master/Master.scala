@@ -460,7 +460,7 @@ private[deploy] class Master(
         waitingDrivers += driver
         drivers.add(driver)
 
-        // launch Driver和launch Executor
+        // 启动 Driver和启动 Executor
         schedule()
 
         // TODO: It might be good to instead have the submission client poll the master to determine
@@ -744,12 +744,15 @@ private[deploy] class Master(
   /**
    * Schedule the currently available resources among waiting apps. This method will be called
    * every time a new app joins or resource availability changes.
+    * 为等待的任务调度可用的资源,这个方法将会在有新任务加入或资源改变的情况下被调用
    */
   private def schedule(): Unit = {
     if (state != RecoveryState.ALIVE) {
       return
     }
     // Drivers take strict precedence over executors
+    // 打乱Worker顺序, 避免Driver集中
+    // 遍历Worker,如果Worker节点剩余的内存和core足够,启动Driver
     val shuffledAliveWorkers = Random.shuffle(workers.toSeq.filter(_.state == WorkerState.ALIVE))
     val numWorkersAlive = shuffledAliveWorkers.size
     var curPos = 0
@@ -760,9 +763,15 @@ private[deploy] class Master(
       var launched = false
       var numWorkersVisited = 0
       while (numWorkersVisited < numWorkersAlive && !launched) {
+        /**
+          * deploy-mode=cluster模式中,注册的Driver信息在waitingDrivers中
+          * 即使是client模式,不注册Driver的情况下,依然会schedule waitingDrivers
+          * 执行力可能因资源或Master recovery等问题处于waiting状态的Driver
+          */
         val worker = shuffledAliveWorkers(curPos)
         numWorkersVisited += 1
         if (worker.memoryFree >= driver.desc.mem && worker.coresFree >= driver.desc.cores) {
+          // 启动Driver
           launchDriver(worker, driver)
           waitingDrivers -= driver
           launched = true
@@ -770,9 +779,11 @@ private[deploy] class Master(
         curPos = (curPos + 1) % numWorkersAlive
       }
     }
+    // 启动Executor
     startExecutorsOnWorkers()
   }
 
+  // 启动Executor
   private def launchExecutor(worker: WorkerInfo, exec: ExecutorDesc): Unit = {
     logInfo("Launching executor " + exec.fullId + " on worker " + worker.id)
     worker.addExecutor(exec)
@@ -1114,10 +1125,14 @@ private[deploy] class Master(
     new DriverInfo(now, newDriverId(date), desc, date)
   }
 
+  // 启动Driver
   private def launchDriver(worker: WorkerInfo, driver: DriverInfo) {
     logInfo("Launching driver " + driver.id + " on worker " + worker.id)
     worker.addDriver(driver)
     driver.worker = Some(worker)
+
+    // 调用RpcEndpointRef,发送Launch消息给Worker节点
+    // 此Worker事schedule()方法随机选出的
     worker.endpoint.send(LaunchDriver(driver.id, driver.desc))
     driver.state = DriverState.RUNNING
   }
