@@ -36,6 +36,14 @@ import org.apache.spark.scheduler.cluster.CoarseGrainedClusterMessages._
 import org.apache.spark.serializer.SerializerInstance
 import org.apache.spark.util.{ThreadUtils, SignalLogger, Utils}
 
+/**
+  * CoarseGrainedExecutorBackend是RpcEndpoint的子类，能够和Driver进行RPC通信，其生命周期方法onStart一定要关注，看执行了哪些动作。
+  * CoarseGrainedExecutorBackend维护了两个属性executor和driver，executor负责运行task，driver负责和Driver通信。
+  * ExecutorBackend有抽象方法statusUpdate，负责将Executor的计算结果返回给Driver。
+  *
+  * CoarseGrainedExecutorBackend是spark运行期的一个进程，Executor运行在该进程内。
+  * 由org.apache.spark.deploy.worker.ExecutorRunner#fetchAndRunExecutor()方法调用linux命令启动main()
+  */
 private[spark] class CoarseGrainedExecutorBackend(
     override val rpcEnv: RpcEnv,
     driverUrl: String,
@@ -189,6 +197,7 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
         SparkHadoopUtil.get.startExecutorDelegationTokenRenewer(driverConf)
       }
 
+      // 创建RpcEnv
       val env = SparkEnv.createExecutorEnv(
         driverConf, executorId, hostname, port, cores, isLocal = false)
 
@@ -198,8 +207,12 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
       val sparkHostPort = env.conf.getOption("spark.executor.port").map { port =>
           hostname + ":" + port
         }.orNull
+
+      // 注册name为Executor的CoarseGrainedExecutorBackend
       env.rpcEnv.setupEndpoint("Executor", new CoarseGrainedExecutorBackend(
         env.rpcEnv, driverUrl, executorId, sparkHostPort, cores, userClassPath, env))
+
+      // 注册WorkerWatcher, 用于关闭CoarseGrainedExecutorBackend进程
       workerUrl.foreach { url =>
         env.rpcEnv.setupEndpoint("WorkerWatcher", new WorkerWatcher(env.rpcEnv, url))
       }
@@ -208,6 +221,11 @@ private[spark] object CoarseGrainedExecutorBackend extends Logging {
     }
   }
 
+  /**
+    * 由org.apache.spark.deploy.worker.ExecutorRunner#fetchAndRunExecutor()方法调用linux命令启动main()
+    *
+    * @param args
+    */
   def main(args: Array[String]) {
     var driverUrl: String = null
     var executorId: String = null

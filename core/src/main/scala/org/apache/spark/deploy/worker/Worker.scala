@@ -465,7 +465,7 @@ private[deploy] class Worker(
       logInfo(s"Master with url $masterUrl requested this worker to reconnect.")
       registerWithMaster()
 
-    // 接受来自Master的启动Executor信息
+    // 接受来自Master的 启动Executor信息
     case LaunchExecutor(masterUrl, appId, execId, appDesc, cores_, memory_) =>
       if (masterUrl != activeMasterUrl) {
         logWarning("Invalid Master (" + masterUrl + ") attempted to launch executor.")
@@ -486,11 +486,13 @@ private[deploy] class Worker(
           val appLocalDirs = appDirectories.get(appId).getOrElse {
             Utils.getOrCreateLocalRootDirs(conf).map { dir =>
               val appDir = Utils.createDirectory(dir, namePrefix = "executor")
-              Utils.chmod700(appDir)
+              Utils.chmod700(appDir) // 改变运行目录权限
               appDir.getAbsolutePath()
             }.toSeq
           }
           appDirectories(appId) = appLocalDirs
+
+          // 消息封装为ExecutorRunner对象
           val manager = new ExecutorRunner(
             appId,
             execId,
@@ -508,6 +510,8 @@ private[deploy] class Worker(
             conf,
             appLocalDirs, ExecutorState.RUNNING)
           executors(appId + "/" + execId) = manager
+
+          // 执行ExecutorRunner的start方法,启动Executor的核心
           manager.start()
           coresUsed += cores_
           memoryUsed += memory_

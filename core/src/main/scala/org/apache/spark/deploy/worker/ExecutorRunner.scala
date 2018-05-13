@@ -33,6 +33,8 @@ import org.apache.spark.{Logging, SecurityManager, SparkConf}
 /**
  * Manages the execution of one executor process.
  * This is currently only used in standalone mode.
+  *
+  * 管理Executor的执行,仅仅自在standalone模式适用
  */
 private[deploy] class ExecutorRunner(
     val appId: String,
@@ -68,6 +70,7 @@ private[deploy] class ExecutorRunner(
 
   private[worker] def start() {
     workerThread = new Thread("ExecutorRunner for " + fullId) {
+      // 调用ExecutorRunner的fetchAndRunExecutor方法
       override def run() { fetchAndRunExecutor() }
     }
     workerThread.start()
@@ -136,10 +139,14 @@ private[deploy] class ExecutorRunner(
 
   /**
    * Download and run the executor described in our ApplicationDescription
+    *
+    * fetchAndRunExecutor方法中将收到的信息拼接为Linux命令，
+    * 然后使用ProcessBuilder执行Linux命令启动CoarseGrainedExecutorBackend，和启动Driver的方式如出一辙
    */
   private def fetchAndRunExecutor() {
     try {
       // Launch the process
+      // 拼接Linux 命令
       val builder = CommandUtils.buildProcessBuilder(appDesc.command, new SecurityManager(conf),
         memory, sparkHome.getAbsolutePath, substituteVariables)
       val command = builder.command()
@@ -158,14 +165,17 @@ private[deploy] class ExecutorRunner(
       builder.environment.put("SPARK_LOG_URL_STDERR", s"${baseUrl}stderr")
       builder.environment.put("SPARK_LOG_URL_STDOUT", s"${baseUrl}stdout")
 
+      // 使用ProcessBuilder执行linux命令,启动 CoarseGrainedExecutorBackend 进程
       process = builder.start()
       val header = "Spark Executor Command: %s\n%s\n\n".format(
         formattedCommand, "=" * 40)
 
       // Redirect its stdout and stderr to files
+      // 设置日志输出目录为 executorDir/stout
       val stdout = new File(executorDir, "stdout")
       stdoutAppender = FileAppender(process.getInputStream, stdout, conf)
 
+      // 设置错误日志输出目录为 executorDir/stderr
       val stderr = new File(executorDir, "stderr")
       Files.write(header, stderr, UTF_8)
       stderrAppender = FileAppender(process.getErrorStream, stderr, conf)

@@ -120,6 +120,7 @@ private[spark] trait RpcEndpoint {
   /**
    * Invoked before [[RpcEndpoint]] starts to handle any message.
     * Endpoint生命周期的启动方法
+    * 生命周期中最重要的方法,一定要重点关注子类实现的onStart()
    */
   def onStart(): Unit = {
     // By default, do nothing.
