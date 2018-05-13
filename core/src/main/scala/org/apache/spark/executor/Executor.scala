@@ -136,6 +136,8 @@ private[spark] class Executor(
 
   startDriverHeartbeater()
 
+  // Executor的launchTask方法将收到的信息封装为TaskRunner对象，TaskRunner继承自Runnable，
+  // Executor使用线程池threadPool调度TaskRunner
   def launchTask(
       context: ExecutorBackend,
       taskId: Long,
@@ -207,17 +209,26 @@ private[spark] class Executor(
       }
     }
 
+    // 继承Runnable,重写run方法
     override def run(): Unit = {
+      /* 1.反序列化Task阶段 */
+      // TaskMemoryManager用于管理每个Task的内存
       val taskMemoryManager = new TaskMemoryManager(env.memoryManager, taskId)
       val deserializeStartTime = System.currentTimeMillis()
       Thread.currentThread.setContextClassLoader(replClassLoader)
       val ser = env.closureSerializer.newInstance()
       logInfo(s"Running $taskName (TID $taskId)")
+
+      // 给Driver发消息,通知task状态为RUNNING
       execBackend.statusUpdate(taskId, TaskState.RUNNING, EMPTY_BYTE_BUFFER)
       var taskStart: Long = 0
+      // 计算GC时间
       startGCTime = computeTotalGcTime()
 
       try {
+        // 反序列化收到的task信息,结果为file何jar的路径,以及task对应的ByteBuffer
+        // 从Driver下载相应的file和jar,并使用replClassLoader类加载器加载jar
+        // 反序列化task对应的ByteBuffer,得到Task对象
         val (taskFiles, taskJars, taskBytes) = Task.deserializeWithDependencies(serializedTask)
         updateDependencies(taskFiles, taskJars)
         task = ser.deserialize[Task[Any]](taskBytes, Thread.currentThread.getContextClassLoader)
@@ -236,10 +247,14 @@ private[spark] class Executor(
         logDebug("Task " + taskId + "'s epoch is " + task.epoch)
         env.mapOutputTracker.updateEpoch(task.epoch)
 
+        /* 2.运行Task阶段 */
         // Run the actual task and measure its runtime.
         taskStart = System.currentTimeMillis()
         var threwException = true
         val (value, accumUpdates) = try {
+          // 调用Task的run方法,执行任务
+          // 调用Task的run方法执行计算，Task是抽象类，
+          // 其实现类有两个，ShuffleMapTask和ResultTask，分别对应shuffle和非shuffle任务。
           val res = task.run(
             taskAttemptId = taskId,
             attemptNumber = attemptNumber,
@@ -247,6 +262,7 @@ private[spark] class Executor(
           threwException = false
           res
         } finally {
+          // 检查内存泄漏
           val releasedLocks = env.blockManager.releaseAllLocksForTask(taskId)
           val freedMemory = taskMemoryManager.cleanUpAllAllocatedMemory()
           if (freedMemory > 0) {
@@ -297,7 +313,9 @@ private[spark] class Executor(
         val serializedDirectResult = ser.serialize(directResult)
         val resultSize = serializedDirectResult.limit
 
+        /* 3.返回结果阶段 */
         // directSend = sending directly back to the driver
+        // 判断结果的大小,采用不同方式处理,丢弃,使用BlockManager或直接返回
         val serializedResult: ByteBuffer = {
           if (maxResultSize > 0 && resultSize > maxResultSize) {
             logWarning(s"Finished $taskName (TID $taskId). Result is larger than maxResultSize " +
@@ -317,6 +335,7 @@ private[spark] class Executor(
           }
         }
 
+        // 发送Result给Driver
         execBackend.statusUpdate(taskId, TaskState.FINISHED, serializedResult)
 
       } catch {

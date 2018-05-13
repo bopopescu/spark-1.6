@@ -105,6 +105,7 @@ private[spark] class CoarseGrainedExecutorBackend(
       logError("Slave registration failed: " + message)
       System.exit(1)
 
+    // Driver to executors, 启动Task
     case LaunchTask(data) =>
       if (executor == null) {
         logError("Received LaunchTask command but executor was null")
@@ -112,6 +113,8 @@ private[spark] class CoarseGrainedExecutorBackend(
       } else {
         val taskDesc = ser.deserialize[TaskDescription](data.value)
         logInfo("Got assigned task " + taskDesc.taskId)
+
+        // Executor对象处理task
         executor.launchTask(this, taskId = taskDesc.taskId, attemptNumber = taskDesc.attemptNumber,
           taskDesc.name, taskDesc.serializedTask)
       }

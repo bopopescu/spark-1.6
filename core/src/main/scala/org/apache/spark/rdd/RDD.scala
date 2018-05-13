@@ -1021,6 +1021,8 @@ abstract class RDD[T: ClassTag](
         }
       }
     }
+
+    // SparkContext提交任务
     sc.runJob(this, reducePartition, mergeResult)
     // Get the final result out of our Option, or throw an exception if the RDD was empty
     jobResult.getOrElse(throw new UnsupportedOperationException("empty collection"))

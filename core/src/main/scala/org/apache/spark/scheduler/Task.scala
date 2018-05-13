@@ -58,11 +58,14 @@ private[spark] abstract class Task[T](
   type AccumulatorUpdates = Map[Long, Any]
 
   /**
-   * Called by [[Executor]] to run this task.
+   * Called by [[org.apache.spark.executor.Executor]] to run this task.
    *
    * @param taskAttemptId an identifier for this task attempt that is unique within a SparkContext.
    * @param attemptNumber how many times this task has been attempted (0 for the first attempt)
    * @return the result of the task along with updates of Accumulators.
+    *
+    *  Task的run方法调用其runTask方法执行task，我们以Task的子类ResultTask为例
+    *  (ShuffleMapTask相比ResultTask多了一个步骤，使用ShuffleWriter将结果写到本地)
    */
   final def run(
     taskAttemptId: Long,
@@ -86,6 +89,7 @@ private[spark] abstract class Task[T](
       kill(interruptThread = false)
     }
     try {
+      // 调用runTask方法执行task, 每个子类runTask方法实现不同
       (runTask(context), context.collectAccumulators())
     } catch {
       case e: Throwable =>
