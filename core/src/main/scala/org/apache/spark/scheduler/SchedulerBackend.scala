@@ -21,6 +21,9 @@ package org.apache.spark.scheduler
  * A backend interface for scheduling systems that allows plugging in different ones under
  * TaskSchedulerImpl. We assume a Mesos-like model where the application gets resource offers as
  * machines become available and can launch tasks on them.
+  *
+  * TaskScheduler的主要作用是，将DAGScheduler生成的task，
+  * 使用SchedulerBackend和DriverEndpoint发送给Executor，
  */
 private[spark] trait SchedulerBackend {
   private val appId = "spark-application-" + System.currentTimeMillis

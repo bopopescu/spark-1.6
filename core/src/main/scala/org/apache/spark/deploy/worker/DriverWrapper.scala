@@ -27,9 +27,13 @@ import org.apache.spark.util.{ChildFirstURLClassLoader, MutableURLClassLoader, U
  * Utility object for launching driver programs such that they share fate with the Worker process.
  * This is used in standalone cluster mode only.
   *
-  * Spark使用DriverWrapper启动用户APP的main函数，而不是直接启动，
+  * Spark使用DriverWrapper通过反射启动用户APP的main函数，而不是直接启动，
   * 这是为了Driver程序和启动Driver的Worker程序共命运(源码注释中称为share fate)，
   * 即如果此Worker挂了，对应的Driver也会停止
+  *
+  * 通过反射调用用户提交的作业app中的main函数时,在sparkContext中启动_schedulerBackend,
+  * _schedulerBackend是SchedulerBackend子类的实例,_schedulerBackend中封装了org.apache.spark.deploy.client.AppClient
+  * APPClient是Driver与Master,Worker进行RPC通信的客户端
  */
 object DriverWrapper {
   def main(args: Array[String]) {
@@ -57,6 +61,7 @@ object DriverWrapper {
         Thread.currentThread.setContextClassLoader(loader)
 
         // Delegate to supplied main class
+        // 通过反射启动用户提交的app作业中的main
         val clazz = Utils.classForName(mainClass)
         val mainMethod = clazz.getMethod("main", classOf[Array[String]])
         mainMethod.invoke(null, extraArgs.toArray[String])

@@ -141,6 +141,8 @@ private[spark] class TaskSchedulerImpl(
   def newTaskId(): Long = nextTaskId.getAndIncrement()
 
   override def start() {
+    // SparkDeploySchedulerBackend的start方法，其start方法调用父类CoarseGrainedSchedulerBackend的start方法
+    // 类的start方法中注册DriverEndpoint到RpcEnv，DriverEndpoint用于提交task到Executor，接收Executor返回的计算结果。
     backend.start()
 
     if (!isLocal && conf.getBoolean("spark.speculation", false)) {

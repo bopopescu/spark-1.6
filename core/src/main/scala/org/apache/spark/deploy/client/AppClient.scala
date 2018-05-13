@@ -36,6 +36,7 @@ import org.apache.spark.util.{RpcUtils, ThreadUtils, Utils}
  * events occur.
  *
  * @param masterUrls Each url should look like spark://host:port.
+  *    Driver端
  */
 private[spark] class AppClient(
     rpcEnv: RpcEnv,
@@ -54,6 +55,10 @@ private[spark] class AppClient(
   private val appId = new AtomicReference[String]
   private val registered = new AtomicBoolean(false)
 
+  /**
+    * RpcEndpoint的一个实现类,提供给Driver进行RPC通信
+    * @param rpcEnv
+    */
   private class ClientEndpoint(override val rpcEnv: RpcEnv) extends ThreadSafeRpcEndpoint
     with Logging {
 
@@ -84,6 +89,7 @@ private[spark] class AppClient(
 
     override def onStart(): Unit = {
       try {
+        // 向Master注册
         registerWithMaster(1)
       } catch {
         case e: Exception =>
@@ -106,6 +112,8 @@ private[spark] class AppClient(
             logInfo("Connecting to master " + masterAddress.toSparkURL + "...")
             val masterRef =
               rpcEnv.setupEndpointRef(Master.SYSTEM_NAME, masterAddress, Master.ENDPOINT_NAME)
+
+            // 遍历Masters,向Master 发送 RegisterApplication, 注册app
             masterRef.send(RegisterApplication(appDescription, self))
           } catch {
             case ie: InterruptedException => // Cancelled
@@ -123,7 +131,9 @@ private[spark] class AppClient(
      * nthRetry means this is the nth attempt to register with master.
      */
     private def registerWithMaster(nthRetry: Int) {
+      // 调用tryRegisterAllMasters向所有的Master注册的细节
       registerMasterFutures.set(tryRegisterAllMasters())
+
       registrationRetryTimer.set(registrationRetryThread.scheduleAtFixedRate(new Runnable {
         override def run(): Unit = {
           if (registered.get) {
@@ -170,12 +180,14 @@ private[spark] class AppClient(
         markDead("Master removed our application: %s".format(message))
         stop()
 
+      // Executor已被成功添加
       case ExecutorAdded(id: Int, workerId: String, hostPort: String, cores: Int, memory: Int) =>
         val fullId = appId + "/" + id
         logInfo("Executor added: %s on %s (%s) with %d cores".format(fullId, workerId, hostPort,
           cores))
         listener.executorAdded(fullId, workerId, hostPort, cores, memory)
 
+      // 接受来自Master的信息: Executor状态改变
       case ExecutorUpdated(id, state, message, exitStatus) =>
         val fullId = appId + "/" + id
         val messageText = message.map(s => " (" + s + ")").getOrElse("")
@@ -276,6 +288,8 @@ private[spark] class AppClient(
 
   }
 
+  // 初始化AppClient，并执行其start方法，start方法中注册 ClientEndpoint，
+  // ClientEndpoint的生命周期方法onStart中会和Master通信，注册APP
   def start() {
     // Just launch an rpcEndpoint; it will call back into the listener.
     endpoint.set(rpcEnv.setupEndpoint("AppClient", new ClientEndpoint(rpcEnv)))

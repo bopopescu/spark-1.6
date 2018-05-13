@@ -27,6 +27,15 @@ import org.apache.spark.launcher.{LauncherBackend, SparkAppHandle}
 import org.apache.spark.scheduler._
 import org.apache.spark.util.Utils
 
+/**
+  * 继承链
+  * SparkDeploySchedulerBackend -> CoarseGrainedSchedulerBackend -> SchedulerBackend
+  * SparkDeploySchedulerBackend是SchedulerBackend的实现类，作用于Driver内，维护了和Executor的通信，
+  * 配合TaskScheduler提交任务到Executor，以及接收Executor的计算结果。
+  * @param scheduler
+  * @param sc
+  * @param masters
+  */
 private[spark] class SparkDeploySchedulerBackend(
     scheduler: TaskSchedulerImpl,
     sc: SparkContext,
@@ -50,6 +59,8 @@ private[spark] class SparkDeploySchedulerBackend(
   private val totalExpectedCores = maxCores.getOrElse(0)
 
   override def start() {
+    // 首先调用父类的start()
+    // 注册DriverEndpoint到RpcEnv
     super.start()
     launcherBackend.connect()
 
@@ -90,6 +101,9 @@ private[spark] class SparkDeploySchedulerBackend(
     val coresPerExecutor = conf.getOption("spark.executor.cores").map(_.toInt)
     val appDesc = new ApplicationDescription(sc.appName, maxCores, sc.executorMemory,
       command, appUIAddress, sc.eventLogDir, sc.eventLogCodec, coresPerExecutor)
+
+    // 初始化AppClient，并执行其start方法，start方法中注册 ClientEndpoint，
+    // ClientEndpoint的生命周期方法onStart中会和Master通信，注册APP
     client = new AppClient(sc.env.rpcEnv, masters, appDesc, this, conf)
     client.start()
     launcherBackend.setState(SparkAppHandle.State.SUBMITTED)

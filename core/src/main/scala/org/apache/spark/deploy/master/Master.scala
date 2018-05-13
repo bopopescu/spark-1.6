@@ -129,6 +129,7 @@ private[deploy] class Master(
   // As a temporary workaround before better ways of configuring memory, we allow users to set
   // a flag that will perform round-robin scheduling across the nodes (spreading out each app
   // among all the nodes) instead of trying to consolidate each app onto a small # of nodes.
+  // spreadOutApps算法分配资源，即Executor分布在尽可能多的Worker节点上
   private val spreadOutApps = conf.getBoolean("spark.deploy.spreadOut", true)
 
   // Default maxCores for applications that don't specify it (i.e. pass Int.MaxValue)
@@ -258,6 +259,7 @@ private[deploy] class Master(
     }
 
     // 注册作业application
+    // org.apache.spark.deploy.client.AppClient 就是Driver的实现类
     case RegisterApplication(description, driver) => {
       // TODO Prevent repeated registrations from some driver
       if (state == RecoveryState.STANDBY) {
@@ -265,15 +267,18 @@ private[deploy] class Master(
       } else {
         logInfo("Registering app " + description.name)
         val app = createApplication(description, driver)
+        // 调用registerApplication注册app
         registerApplication(app)
         logInfo("Registered app " + description.name + " with ID " + app.id)
         persistenceEngine.addApplication(app)
+
+        //给Driver端发送,app已被注册
         driver.send(RegisteredApplication(app.id, self))
         schedule()
       }
     }
 
-    // Executor状态改变
+    // 接受来自Worker的消息:Executor状态改变
     case ExecutorStateChanged(appId, execId, state, message, exitStatus) => {
       val execOption = idToApp.get(appId).flatMap(app => app.executors.get(execId))
       execOption match {
@@ -288,6 +293,7 @@ private[deploy] class Master(
             appInfo.resetRetryCount()
           }
 
+          // 告诉Driver端Executor状态改变
           exec.application.driver.send(ExecutorUpdated(execId, state, message, exitStatus))
 
           if (ExecutorState.isFinished(state)) {
@@ -460,7 +466,8 @@ private[deploy] class Master(
         waitingDrivers += driver
         drivers.add(driver)
 
-        // 启动 Driver和启动 Executor
+        // 启动 Driver 和启动 Executor
+        // 非常重要的方法!!!非常重要!!!
         schedule()
 
         // TODO: It might be good to instead have the submission client poll the master to determine
@@ -628,6 +635,8 @@ private[deploy] class Master(
    * User requests 3 executors (spark.cores.max = 48, spark.executor.cores = 16). If 1 core is
    * allocated at a time, 12 cores from each worker would be assigned to each executor.
    * Since 12 < 16, no executors would launch [SPARK-8881].
+    *
+    * 调度Workers上的Executors
    */
   private def scheduleExecutorsOnWorkers(
       app: ApplicationInfo,
@@ -684,6 +693,8 @@ private[deploy] class Master(
           // many workers as possible. If we are not spreading out, then we should keep
           // scheduling executors on this worker until we use all of its resources.
           // Otherwise, just move on to the next worker.
+          // 使用spreadOutApps算法分配资源，即Executor分布在尽可能多的Worker节点上，
+          // 相反，也支持Executor聚集在某些Worker节点上，通过参数spark.deploy.spreadOut配置，默认为true
           if (spreadOutApps) {
             keepScheduling = false
           }
@@ -696,21 +707,33 @@ private[deploy] class Master(
 
   /**
    * Schedule and launch executors on workers
+    * 在Workers节点上调度和启动Executors
+    * startExecutorsOnWorkers方法的职责是调度waitingApps，即将core和memory分配到具体的Worker
    */
   private def startExecutorsOnWorkers(): Unit = {
     // Right now this is a very simple FIFO scheduler. We keep trying to fit in the first app
     // in the queue, then the second app, etc.
+    // waitingApps 就是 Spark任务调度的Register App(注册APP信息),主要为core和memory
+    // waitingApps信息主要是我们通过命令行传入的core和memory信息
+    // schedule waitingApps的顺序为FIFO
     for (app <- waitingApps if app.coresLeft > 0) {
       val coresPerExecutor: Option[Int] = app.desc.coresPerExecutor
       // Filter out workers that don't have enough resources to launch an executor
+      // 过滤掉资源不够的Worker, 选取的Worker节点中core和memory资源至少可以启动一个Executor
+      // Worker与Master的心跳机制,可以定期把Worker上实时的core和memory告诉Master
       val usableWorkers = workers.toArray.filter(_.state == WorkerState.ALIVE)
         .filter(worker => worker.memoryFree >= app.desc.memoryPerExecutorMB &&
           worker.coresFree >= coresPerExecutor.getOrElse(1))
         .sortBy(_.coresFree).reverse
+
+      // spark Executor资源调度
+      // assignedCores 为每个Worker分配的core数,调用scheduleExecutorsOnWorkers调度,调度算法为spreadOutApps
       val assignedCores = scheduleExecutorsOnWorkers(app, usableWorkers, spreadOutApps)
 
       // Now that we've decided how many cores to allocate on each worker, let's allocate them
+      // 根据分配好的assignedCores,在相应的Worker节点上启动Executor
       for (pos <- 0 until usableWorkers.length if assignedCores(pos) > 0) {
+        // 通知Workers启动Executor
         allocateWorkerResourceToExecutors(
           app, assignedCores(pos), coresPerExecutor, usableWorkers(pos))
       }
@@ -736,6 +759,7 @@ private[deploy] class Master(
     val coresToAssign = coresPerExecutor.getOrElse(assignedCores)
     for (i <- 1 to numExecutors) {
       val exec = app.addExecutor(worker, coresToAssign)
+      // 给Worker节点发送LaunchExecutor消息
       launchExecutor(worker, exec)
       app.state = ApplicationState.RUNNING
     }
@@ -745,6 +769,10 @@ private[deploy] class Master(
    * Schedule the currently available resources among waiting apps. This method will be called
    * every time a new app joins or resource availability changes.
     * 为等待的任务调度可用的资源,这个方法将会在有新任务加入或资源改变的情况下被调用
+    *
+    * 启动Driver 和 Executor的方法
+    * 大量篇幅启动Driver
+    * 最后一行startExecutorsOnWorkers为启动Executor
    */
   private def schedule(): Unit = {
     if (state != RecoveryState.ALIVE) {
@@ -787,8 +815,12 @@ private[deploy] class Master(
   private def launchExecutor(worker: WorkerInfo, exec: ExecutorDesc): Unit = {
     logInfo("Launching executor " + exec.fullId + " on worker " + worker.id)
     worker.addExecutor(exec)
+
+    // 给Worker发送LaunchExecutor信息
     worker.endpoint.send(LaunchExecutor(masterUrl,
       exec.application.id, exec.id, exec.application.desc, exec.cores, exec.memory))
+
+    // 给Driver发送Executor信息,用于Driver的4040端口显示
     exec.application.driver.send(
       ExecutorAdded(exec.id, worker.id, worker.hostPort, exec.cores, exec.memory))
   }
@@ -825,6 +857,7 @@ private[deploy] class Master(
     true
   }
 
+  // 移出Worker
   private def removeWorker(worker: WorkerInfo) {
     logInfo("Removing worker " + worker.id + " on " + worker.host + ":" + worker.port)
     worker.setState(WorkerState.DEAD)
@@ -871,6 +904,7 @@ private[deploy] class Master(
     }
 
     applicationMetricsSystem.registerSource(app.appSource)
+    // 注册app
     apps += app
     idToApp(app.id) = app
     endpointToApp(app.driver) = app

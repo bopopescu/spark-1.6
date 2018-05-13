@@ -542,8 +542,10 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
       HeartbeatReceiver.ENDPOINT_NAME, new HeartbeatReceiver(this))
 
     // Create and start the scheduler
-    // 创建schedulerBackend用于提交任务,创建taskScheduler和dagScheduler
+    // 根据资源管理机类型,创建对应的(SchedulerBackend,TaskScheduler)
+    // Standalone模式下为SparkDeploySchedulerBackend,其中封装了Driver的RPC通信客户端APPClient
     val (sched, ts) = SparkContext.createTaskScheduler(this, master)
+
     _schedulerBackend = sched
     _taskScheduler = ts
     _dagScheduler = new DAGScheduler(this)
@@ -551,6 +553,7 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
 
     // start TaskScheduler after taskScheduler sets DAGScheduler reference in DAGScheduler's
     // constructor
+    // 启动TaskScheduler,SchedulerBackend,注册APP
     _taskScheduler.start()
 
     // 获取applicationId，启动度量系统，获取eventLogger
