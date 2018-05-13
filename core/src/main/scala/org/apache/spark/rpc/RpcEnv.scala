@@ -101,6 +101,7 @@ private[spark] abstract class RpcEnv(conf: SparkConf) {
 
   /**
    * Retrieve the [[RpcEndpointRef]] represented by `uri` asynchronously.
+    * 异步
    */
   def asyncSetupEndpointRefByURI(uri: String): Future[RpcEndpointRef]
 

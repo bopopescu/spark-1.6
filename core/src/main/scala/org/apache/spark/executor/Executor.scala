@@ -42,6 +42,10 @@ import org.apache.spark.util._
  * This can be used with Mesos, YARN, and the standalone scheduler.
  * An internal RPC interface (at the moment Akka) is used for communication with the driver,
  * except in the case of Mesos fine-grained mode.
+  *
+  * Executor: 有两个重要属性，runningTasks和threadPool，
+  * 分别用于维护正在运行的TaskRunner和调度TaskRunner线程。
+  * 将收到的task信息封装为TaskRunner及执行TaskRunner发生在Executor的launchTask方法中。
  */
 private[spark] class Executor(
     executorId: String,
@@ -55,6 +59,7 @@ private[spark] class Executor(
 
   // Application dependencies (added through SparkContext) that we've fetched so far on this node.
   // Each map holds the master's timestamp for the version of that file or JAR we got.
+  // task依赖的jar和file,远程下载到worker节点
   private val currentFiles: HashMap[String, Long] = new HashMap[String, Long]()
   private val currentJars: HashMap[String, Long] = new HashMap[String, Long]()
 
@@ -78,6 +83,7 @@ private[spark] class Executor(
   }
 
   // Start worker thread pool
+  // 创建线程池
   private val threadPool = ThreadUtils.newDaemonCachedThreadPool("Executor task launch worker")
   private val executorSource = new ExecutorSource(threadPool, executorId)
 
@@ -105,6 +111,7 @@ private[spark] class Executor(
   private val maxResultSize = Utils.getMaxResultSize(conf)
 
   // Maintains the list of running tasks.
+  // 使用线程安全的ConcurrentHashMap存放正在运行的task
   private val runningTasks = new ConcurrentHashMap[Long, TaskRunner]
 
   // Executor for the heartbeat task.
@@ -163,6 +170,15 @@ private[spark] class Executor(
     ManagementFactory.getGarbageCollectorMXBeans.asScala.map(_.getCollectionTime).sum
   }
 
+  /**
+    *  运行期Executor收到Driver发送的task信息，将其封装为TaskRunner
+    *  TaskRunner继承Runnable，Executor使用线程池threadpool调度TaskRunner
+    * @param execBackend
+    * @param taskId
+    * @param attemptNumber
+    * @param taskName
+    * @param serializedTask
+    */
   class TaskRunner(
       execBackend: ExecutorBackend,
       val taskId: Long,
@@ -442,6 +458,7 @@ private[spark] class Executor(
   }
 
   /** Reports heartbeat and metrics for active tasks to the driver. */
+  // 向Driver汇报存活的心跳和系统度量
   private def reportHeartBeat(): Unit = {
     // list of (task id, metrics) to send back to the driver
     val tasksMetrics = new ArrayBuffer[(Long, TaskMetrics)]()

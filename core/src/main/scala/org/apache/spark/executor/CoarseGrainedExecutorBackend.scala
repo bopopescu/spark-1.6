@@ -55,6 +55,9 @@ private[spark] class CoarseGrainedExecutorBackend(
   extends ThreadSafeRpcEndpoint with ExecutorBackend with Logging {
 
   private[this] val stopping = new AtomicBoolean(false)
+
+  // CoarseGrainedExecutorBackend维护了两个属性executor和driver，
+  // executor负责运行task，driver负责和Driver通信。
   var executor: Executor = null
   @volatile var driver: Option[RpcEndpointRef] = None
 
@@ -64,14 +67,18 @@ private[spark] class CoarseGrainedExecutorBackend(
 
   override def onStart() {
     logInfo("Connecting to driver: " + driverUrl)
+    //
     rpcEnv.asyncSetupEndpointRefByURI(driverUrl).flatMap { ref =>
       // This is a very fast action so we can use "ThreadUtils.sameThread"
       driver = Some(ref)
+
+      // 向Driver发送RegisterExecutor消息,并收到回答RegisterExecutorResponse
       ref.ask[RegisterExecutorResponse](
         RegisterExecutor(executorId, self, hostPort, cores, extractLogUrls))
     }(ThreadUtils.sameThread).onComplete {
       // This is a very fast action so we can use "ThreadUtils.sameThread"
       case Success(msg) => Utils.tryLogNonFatalError {
+        // Executor注册成功,将消息放回给自己
         Option(self).foreach(_.send(msg)) // msg must be RegisterExecutorResponse
       }
       case Failure(e) => {
@@ -88,8 +95,10 @@ private[spark] class CoarseGrainedExecutorBackend(
   }
 
   override def receive: PartialFunction[Any, Unit] = {
+    // 接受来自Driver返回的Executor注册成功消息
     case RegisteredExecutor(hostname) =>
       logInfo("Successfully registered with driver")
+      // 创建Executor对象
       executor = new Executor(executorId, hostname, env, userClassPath, isLocal = false)
 
     case RegisterExecutorFailed(message) =>

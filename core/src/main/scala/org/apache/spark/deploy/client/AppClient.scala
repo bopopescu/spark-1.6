@@ -56,7 +56,7 @@ private[spark] class AppClient(
   private val registered = new AtomicBoolean(false)
 
   /**
-    * RpcEndpoint的一个实现类,提供给Driver进行RPC通信
+    * RpcEndpoint的一个实现类,提供给Driver与Master进行RPC通信
     * @param rpcEnv
     */
   private class ClientEndpoint(override val rpcEnv: RpcEnv) extends ThreadSafeRpcEndpoint
