@@ -45,18 +45,25 @@ import org.apache.spark.util.CallSite
  * @param id Unique stage ID
  * @param rdd RDD that this stage runs on: for a shuffle map stage, it's the RDD we run map tasks
  *   on, while for a result stage, it's the target RDD that we ran an action on
- * @param numTasks Total number of tasks in stage; result stages in particular may not need to
- *   compute all partitions, e.g. for first(), lookup(), and take().
- * @param parents List of stages that this stage depends on (through shuffle dependencies).
+ * @param numTasks   Total number of tasks in stage; result stages in particular may not need to
+ *                   compute all partitions, e.g. for first(), lookup(), and take().
+ * @param parents    List of stages that this stage depends on (through shuffle dependencies).
  * @param firstJobId ID of the first job this stage was part of, for FIFO scheduling.
- * @param callSite Location in the user program associated with this stage: either where the target
- *   RDD was created, for a shuffle map stage, or where the action for a result stage was called.
+ * @param callSite   Location in the user program associated with this stage: either where the target
+ *                   RDD was created, for a shuffle map stage, or where the action for a result stage was called.
+  *
+  *  Stage中有两个重要属性，rdd和parents，分别记录的是切分处的RDD和父Stage信息，
+  *  Stage有两个子类，ShuffleMapStage、ResultStage
+  *
+  *       stage	                  差异属性	                              作用
+  *  huffleMapStage	    shuffleDep: ShuffleDependency	            保存Dependency信息
+  *  ResultStage        func: (TaskContext, Iterator[_]) => _	    保存action对应的处理函数
  */
 private[scheduler] abstract class Stage(
     val id: Int,
     val rdd: RDD[_],
     val numTasks: Int,
-    val parents: List[Stage],
+    val parents: List[Stage], // 父Stage
     val firstJobId: Int,
     val callSite: CallSite)
   extends Logging {

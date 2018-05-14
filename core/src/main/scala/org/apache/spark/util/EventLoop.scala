@@ -30,13 +30,21 @@ import org.apache.spark.Logging
  *
  * Note: The event queue will grow indefinitely. So subclasses should make sure `onReceive` can
  * handle events in time to avoid the potential OOM.
+  *
+  * DAGScheduler使用EventLoop(LinkedBlockingDeque)异步处理Job的流程
+  *
+  * 异步处理借助于EventLoop实现，EventLoop内部维护了LinkedBlockingDeque，
+  * LinkedBlockingDeque是基于链表实现的双端阻塞队列，参考LinkedBlockingDeque.java，
+  * LinkedBlockingDeque支持双端同时操作，在指定容量并且容量已满时，支持阻塞。
  */
 private[spark] abstract class EventLoop[E](name: String) extends Logging {
 
+  // 双端阻塞队列
   private val eventQueue: BlockingQueue[E] = new LinkedBlockingDeque[E]()
 
   private val stopped = new AtomicBoolean(false)
 
+  // eventThread中循环消费eventQueue中存储的事件
   private val eventThread = new Thread(name) {
     setDaemon(true)
 
@@ -124,6 +132,8 @@ private[spark] abstract class EventLoop[E](name: String) extends Logging {
    * Note: Should avoid calling blocking actions in `onReceive`, or the event thread will be blocked
    * and cannot process events in time. If you want to call some blocking actions, run them in
    * another thread.
+    *
+    * 消费方法为onReceive，是抽象方法，具体逻辑由子类实现。
    */
   protected def onReceive(event: E): Unit
 
