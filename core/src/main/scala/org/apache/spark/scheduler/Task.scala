@@ -42,8 +42,13 @@ import org.apache.spark.util.Utils
  * and sends the task output back to the driver application. A ShuffleMapTask executes the task
  * and divides the task output to multiple buckets (based on the task's partitioner).
  *
- * @param stageId id of the stage this task belongs to
+ * @param stageId     id of the stage this task belongs to
  * @param partitionId index of the number in the RDD
+  *
+  *  Task是执行计算的单元，Executor调用Task对象的runTask方法完成计算。
+  *  Task有两个子类，并且和Stage的类型存在对应关系，即Stage会转为对应的Task
+  *  ShuffleMapTask	对应 ShuffleMapStage
+  *  ResultTask	对应 ResultStage
  */
 private[spark] abstract class Task[T](
     val stageId: Int,

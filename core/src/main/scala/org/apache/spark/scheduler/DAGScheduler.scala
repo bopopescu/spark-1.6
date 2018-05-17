@@ -765,6 +765,10 @@ class DAGScheduler(
   /**
    * Check for waiting or failed stages which are now eligible for resubmission.
    * Ordinarily run on every iteration of the event loop.
+    *
+    * 处于waiting状态的stage
+    * 1.拷贝集合waitingStages到waitingStagesCopy，清空waitingStages。
+    * 2.遍历waitingStagesCopy中的Stage，调用submitStage方法。
    */
   private def submitWaitingStages() {
     // TODO: We might want to run this less often, when we are sure that something has become
@@ -940,18 +944,28 @@ class DAGScheduler(
   }
 
   /** Submits stage, but first recursively submits any missing parents. */
+  /**
+    * 递归函数
+    * 1.根据jobId,判断stage所属的Job是否active
+    * 2.判断stage的状态,是否为waiting,running或failed
+    * 3.stage是否还有父stage没有提交,如果有,提交父stage,并把stage加到waitingStages,否则提交stage
+    */
   private def submitStage(stage: Stage) {
     val jobId = activeJobForStage(stage)
     if (jobId.isDefined) {
       logDebug("submitStage(" + stage + ")")
       if (!waitingStages(stage) && !runningStages(stage) && !failedStages(stage)) {
+        // 获得父Stage,并且这个父Stage是还没有执行完毕的
         val missing = getMissingParentStages(stage).sortBy(_.id)
         logDebug("missing: " + missing)
         if (missing.isEmpty) {
+          // Stage转为Task,并提交
           logInfo("Submitting " + stage + " (" + stage.rdd + "), which has no missing parents")
+          // 当提交的Stage没有父Stage或父Stage已执行完毕时，调用submitMissingTasks方法
           submitMissingTasks(stage, jobId.get)
         } else {
           for (parent <- missing) {
+            // 提交父Stage
             submitStage(parent)
           }
           waitingStages += stage
@@ -963,17 +977,21 @@ class DAGScheduler(
   }
 
   /** Called when stage's parents are available and we can now do its task. */
+  // Stage对应的Task
   private def submitMissingTasks(stage: Stage, jobId: Int) {
     logDebug("submitMissingTasks(" + stage + ")")
     // Get our pending tasks and remember them in our pendingTasks entry
+    // 清空pending状态的Partition
     stage.pendingPartitions.clear()
 
     // First figure out the indexes of partition ids to compute.
+    // 找出还没有计算的Partition,从0开始
     val partitionsToCompute: Seq[Int] = stage.findMissingPartitions()
 
     // Create internal accumulators if the stage has no accumulators initialized.
     // Reset internal accumulators only if this stage is not partially submitted
     // Otherwise, we may override existing accumulator values from some tasks
+    // 设置Accumulators,每个Satge收集了对应是所有Task的Accumulator
     if (stage.internalAccumulators.isEmpty || stage.numPartitions == partitionsToCompute.size) {
       stage.resetInternalAccumulators()
     }
@@ -987,6 +1005,8 @@ class DAGScheduler(
     // serializable. If tasks are not serializable, a SparkListenerStageCompleted event
     // will be posted, which should always come after a corresponding SparkListenerStageSubmitted
     // event.
+
+    // outputCommitCoordinator协调Task在hdfs的输出,避免racing condition
     stage match {
       case s: ShuffleMapStage =>
         outputCommitCoordinator.stageStart(stage = s.id, maxPartitionId = s.numPartitions - 1)
@@ -994,6 +1014,8 @@ class DAGScheduler(
         outputCommitCoordinator.stageStart(
           stage = s.id, maxPartitionId = s.rdd.partitions.length - 1)
     }
+
+    // 查找RDD的preferred Location
     val taskIdToLocations: Map[Int, Seq[TaskLocation]] = try {
       stage match {
         case s: ShuffleMapStage =>
@@ -1023,6 +1045,9 @@ class DAGScheduler(
     // task gets a different copy of the RDD. This provides stronger isolation between tasks that
     // might modify state of objects referenced in their closures. This is necessary in Hadoop
     // where the JobConf/Configuration object is not thread-safe.
+
+    // broadcast taskBinary
+    // taskBinary 的内容: ShuffleMapTask(rdd, shuffleDep), ResultTask(rdd, func)
     var taskBinary: Broadcast[Array[Byte]] = null
     try {
       // For ShuffleMapTask, serialize and broadcast (rdd, shuffleDep).
@@ -1049,12 +1074,14 @@ class DAGScheduler(
         return
     }
 
+    // 根据Stage类型，生成对应的Task，taskBinary变量是上面刚介绍的，广播到Executor节点的
     val tasks: Seq[Task[_]] = try {
       stage match {
         case stage: ShuffleMapStage =>
           partitionsToCompute.map { id =>
             val locs = taskIdToLocations(id)
             val part = stage.rdd.partitions(id)
+            // Partition和Task数的一一对应关系
             new ShuffleMapTask(stage.id, stage.latestInfo.attemptId,
               taskBinary, part, locs, stage.internalAccumulators)
           }
@@ -1065,6 +1092,7 @@ class DAGScheduler(
             val p: Int = stage.partitions(id)
             val part = stage.rdd.partitions(p)
             val locs = taskIdToLocations(id)
+            // Partition和Task数的一一对应关系
             new ResultTask(stage.id, stage.latestInfo.attemptId,
               taskBinary, part, locs, id, stage.internalAccumulators)
           }
@@ -1076,6 +1104,7 @@ class DAGScheduler(
         return
     }
 
+    // 发送Task到Executor
     if (tasks.size > 0) {
       logInfo("Submitting " + tasks.size + " missing tasks from " + stage + " (" + stage.rdd + ")")
       stage.pendingPartitions ++= tasks.map(_.partitionId)

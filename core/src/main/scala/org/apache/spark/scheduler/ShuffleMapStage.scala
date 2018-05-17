@@ -82,6 +82,10 @@ private[spark] class ShuffleMapStage(
   /**
    * Returns true if the map stage is ready, i.e. all partitions have shuffle outputs.
    * This should be the same as `outputLocs.contains(Nil)`.
+    *
+    * ShuffleMapStage是否执行完毕
+    * 当全部Partition的shuffle outputs存在着表示执行完毕
+    * giant方法和outputLocs.contains(Nil)等价
    */
   def isAvailable: Boolean = _numAvailableOutputs == numPartitions
 
