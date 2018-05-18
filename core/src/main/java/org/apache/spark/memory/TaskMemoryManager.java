@@ -51,6 +51,7 @@ import org.apache.spark.util.Utils;
  * maximum size of a long[] array, allowing us to address 8192 * 2^32 * 8 bytes, which is
  * approximately 35 terabytes of memory.
  */
+// 内部使用MemoryManager，管理所有Task的execution这部分内存
 public class TaskMemoryManager {
 
   private final Logger logger = LoggerFactory.getLogger(TaskMemoryManager.class);

@@ -28,7 +28,11 @@ import org.apache.spark.storage.{BlockId, BlockStatus}
  * The sizes of the execution and storage regions are determined through
  * `spark.shuffle.memoryFraction` and `spark.storage.memoryFraction` respectively. The two
  * regions are cleanly separated such that neither usage can borrow memory from the other.
+  *
+  * spark 1.6之前唯一的内存管理器，静态内存管理器，这里的静态是指storage、execution内存的占比及界限是固定的。
+  * StaticMemoryManager分别使用ExecutionMemoryPool、StorageMemoryPool管理execution、storage、unroll内存
  */
+
 private[spark] class StaticMemoryManager(
     conf: SparkConf,
     maxOnHeapExecutionMemory: Long,
@@ -100,6 +104,7 @@ private[spark] object StaticMemoryManager {
 
   /**
    * Return the total amount of memory available for the storage region, in bytes.
+    * 计算storage区内存
    */
   private def getMaxStorageMemory(conf: SparkConf): Long = {
     val systemMaxMemory = conf.getLong("spark.testing.memory", Runtime.getRuntime.maxMemory)
@@ -110,6 +115,7 @@ private[spark] object StaticMemoryManager {
 
   /**
    * Return the total amount of memory available for the execution region, in bytes.
+    * 计算executor区内存
    */
   private def getMaxExecutionMemory(conf: SparkConf): Long = {
     val systemMaxMemory = conf.getLong("spark.testing.memory", Runtime.getRuntime.maxMemory)

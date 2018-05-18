@@ -46,6 +46,10 @@ import org.apache.spark.storage.{BlockStatus, BlockId}
  *                          it if necessary. Cached blocks can be evicted only if actual
  *                          storage memory usage exceeds this region.
  */
+/**
+  * spark 1.6新加入的内存管理器，统一资源管理器，和StaticMemoryManager最大不同之处在于，
+  * storage、execution内存界限不是固定的，可以互相借用
+  */
 private[spark] class UnifiedMemoryManager private[memory] (
     conf: SparkConf,
     val maxMemory: Long,

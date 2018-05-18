@@ -33,6 +33,16 @@ import org.apache.spark.unsafe.memory.MemoryAllocator
  * sorts and aggregations, while storage memory refers to that used for caching and propagating
  * internal data across the cluster. There exists one MemoryManager per JVM.
  */
+/**
+  * 管理CoarseGrainedExecutorBackend进程的内存(即Executor)，
+  * 其将内存主要划分为storage、execution和other三部分。
+  * CoarseGrainedExecutorBackend上运行的Task共享这部分内存
+  *
+  * Storage : 用于cache block，保存broadcast数据，以及发送large task result
+  * Unroll : Unroll占用的是Storage的内存，Unroll是指 BlockManager收到iterator形式的数据，最终存放到内存的过程
+  * Execution :	保存shuffles、 joins、sorts 、aggregations等操作的中间数据
+  * other	: 剩余的部分，用于class以及spark中的元数据等开销
+  */
 private[spark] abstract class MemoryManager(
     conf: SparkConf,
     numCores: Int,
@@ -185,9 +195,9 @@ private[spark] abstract class MemoryManager(
     if (conf.getBoolean("spark.memory.offHeap.enabled", false)) {
       require(conf.getSizeAsBytes("spark.memory.offHeap.size", 0) > 0,
         "spark.memory.offHeap.size must be > 0 when spark.memory.offHeap.enabled == true")
-      MemoryMode.OFF_HEAP
+      MemoryMode.OFF_HEAP // 使用JVM管理对象
     } else {
-      MemoryMode.ON_HEAP
+      MemoryMode.ON_HEAP  // 手动管理，减小JVM对象空间及gc开销
     }
   }
 
