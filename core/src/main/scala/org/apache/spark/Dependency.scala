@@ -97,8 +97,10 @@ class ShuffleDependency[K: ClassTag, V: ClassTag, C: ClassTag](
   private[spark] val combinerClassName: Option[String] =
     Option(reflect.classTag[C]).map(_.runtimeClass.getName)
 
+  // 获取新的 Shuffle ID
   val shuffleId: Int = _rdd.context.newShuffleId()
 
+  // 向 ShuffleManager 注册 Shuffle 的信息。
   val shuffleHandle: ShuffleHandle = _rdd.context.env.shuffleManager.registerShuffle(
     shuffleId, _rdd.partitions.size, this)
 

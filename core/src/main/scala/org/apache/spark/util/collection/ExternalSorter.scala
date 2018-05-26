@@ -111,6 +111,7 @@ private[spark] class ExternalSorter[K, V, C](
   private val serInstance = ser.newInstance()
 
   // Use getSizeAsKb (not bytes) to maintain backwards compatibility if no units are provided
+  // map端聚合、reduce端聚合、sort都有可能触发溢写(spill)，即处理的数据内存放不下，需要落地磁盘，默认阈值32KB
   private val fileBufferSize = conf.getSizeAsKb("spark.shuffle.file.buffer", "32k").toInt * 1024
 
   // Size of object batches when reading/writing from serializers.
@@ -349,6 +350,8 @@ private[spark] class ExternalSorter[K, V, C](
   {
     val bufferedIters = iterators.filter(_.hasNext).map(_.buffered)
     type Iter = BufferedIterator[Product2[K, C]]
+
+    // 使用优先队列存已经sort的溢写文件,优先顺序为溢写文件第一个元素的大小
     val heap = new mutable.PriorityQueue[Iter]()(new Ordering[Iter] {
       // Use the reverse of comparator.compare because PriorityQueue dequeues the max
       override def compare(x: Iter, y: Iter): Int = -comparator.compare(x.head._1, y.head._1)

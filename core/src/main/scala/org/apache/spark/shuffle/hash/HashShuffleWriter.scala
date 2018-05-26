@@ -34,6 +34,9 @@ private[spark] class HashShuffleWriter[K, V](
   extends ShuffleWriter[K, V] with Logging {
 
   private val dep = handle.dependency
+
+  // shuffle后的Reducer就是分区器Partitioner中的分区数量numPartitions
+  // numPartitions = numBuckets = numReducers
   private val numOutputSplits = dep.partitioner.numPartitions
   private val metrics = context.taskMetrics
 
@@ -51,9 +54,13 @@ private[spark] class HashShuffleWriter[K, V](
     writeMetrics)
 
   /** Write a bunch of records to this task's output */
+  // 先 aggregate 再 partitioner
   override def write(records: Iterator[Product2[K, V]]): Unit = {
+    // map端聚合,类似MapReduce中的combine
     val iter = if (dep.aggregator.isDefined) {
+      // dep.mapSideCombine 为ture 进行map端聚合
       if (dep.mapSideCombine) {
+        // 调用combineValuesByKey进行map端聚合
         dep.aggregator.get.combineValuesByKey(records, context)
       } else {
         records
@@ -63,9 +70,11 @@ private[spark] class HashShuffleWriter[K, V](
       records
     }
 
+    // 使用Partitioner计算记录的bucketId,写入对应的文件
     for (elem <- iter) {
       //Partitioner发挥作用
       val bucketId = dep.partitioner.getPartition(elem._1)
+      // bucket的数量等于Partitioner的numPartitions
       shuffle.writers(bucketId).write(elem._1, elem._2)
     }
   }

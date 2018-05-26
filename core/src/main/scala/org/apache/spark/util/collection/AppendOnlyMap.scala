@@ -35,6 +35,14 @@ import org.apache.spark.annotation.DeveloperApi
  * The map can support up to `375809638 (0.7 * 2 ^ 29)` elements.
  *
  * TODO: Cache the hash values of each key? java.util.HashMap does that.
+  *
+  * combine底层使用AppendOnlyMap实现，AppendOnlyMap是Spark实现的一种HashMap结构，
+  * 和BytesToBytesMap的设计相同，只是底层使用Array存储，AppendOnlyMap实现类较多。
+  *
+  * 实现combine的逻辑如下：
+  * 将task处理的数据依次put到HashMap(AppendOnlyMap)，每次put都检测HashMap中对应的key是否存在，
+  * 若存在，对即将插入的value和HashMap中的value做一次combine操作，例如reduceByKey(_ + _)中定义的+操作。
+  * 此外，combine操作涉及到spill
  */
 @DeveloperApi
 class AppendOnlyMap[K, V](initialCapacity: Int = 64)

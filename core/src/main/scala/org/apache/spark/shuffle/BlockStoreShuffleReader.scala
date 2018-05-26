@@ -39,6 +39,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
   private val dep = handle.dependency
 
   /** Read the combined key-values for this reduce task */
+  // Reduce端聚合
   override def read(): Iterator[Product2[K, C]] = {
     val blockFetcherItr = new ShuffleBlockFetcherIterator(
       context,
@@ -49,6 +50,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
       SparkEnv.get.conf.getSizeAsMb("spark.reducer.maxSizeInFlight", "48m") * 1024 * 1024)
 
     // Wrap the streams for compression based on configuration
+    // 从map端拉取ShuffleWrite后的数据
     val wrappedStreams = blockFetcherItr.map { case (blockId, inputStream) =>
       blockManager.wrapForCompression(blockId, inputStream)
     }
@@ -98,6 +100,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
       case Some(keyOrd: Ordering[K]) =>
         // Create an ExternalSorter to sort the data. Note that if spark.shuffle.spill is disabled,
         // the ExternalSorter won't spill to disk.
+        // reduce端使用ExternalSorter排序数据
         val sorter =
           new ExternalSorter[K, C, C](context, ordering = Some(keyOrd), serializer = Some(ser))
         sorter.insertAll(aggregatedIter)

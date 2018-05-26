@@ -42,6 +42,7 @@ case class Aggregator[K, V, C] (
       iter: Iterator[_ <: Product2[K, V]],
       context: TaskContext): Iterator[(K, C)] = {
     val combiners = new ExternalAppendOnlyMap[K, V, C](createCombiner, mergeValue, mergeCombiners)
+    // 底层调用AppendOnlyMap的子类
     combiners.insertAll(iter)
     updateMetrics(context, combiners)
     combiners.iterator
