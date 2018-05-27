@@ -113,6 +113,8 @@ private[spark] object ReliableCheckpointRDD extends Logging {
 
   /**
    * Write RDD to checkpoint files and return a ReliableCheckpointRDD representing the RDD.
+    *
+    * 将RDD写入文件,返回一个可靠的ReliableCheckpointRDD代表这个RDD
    */
   def writeRDDToCheckpointDirectory[T: ClassTag](
       originalRDD: RDD[T],
@@ -122,6 +124,7 @@ private[spark] object ReliableCheckpointRDD extends Logging {
     val sc = originalRDD.sparkContext
 
     // Create the output path for the checkpoint
+    // 创建一个保存 checkpoint 数据的目录
     val checkpointDirPath = new Path(checkpointDir)
     val fs = checkpointDirPath.getFileSystem(sc.hadoopConfiguration)
     if (!fs.mkdirs(checkpointDirPath)) {
@@ -129,8 +132,10 @@ private[spark] object ReliableCheckpointRDD extends Logging {
     }
 
     // Save to file, and reload it as an RDD
+    // 创建广播变量
     val broadcastedConf = sc.broadcast(
       new SerializableConfiguration(sc.hadoopConfiguration))
+    // 开始一个新的 Job 进行计算，计算结果存入到路径 path 中
     // TODO: This is expensive because it computes the RDD again unnecessarily (SPARK-8582)
     sc.runJob(originalRDD,
       writePartitionToCheckpointFile[T](checkpointDirPath.toString, broadcastedConf) _)
@@ -139,6 +144,7 @@ private[spark] object ReliableCheckpointRDD extends Logging {
       writePartitionerToCheckpointDir(sc, originalRDD.partitioner.get, checkpointDirPath)
     }
 
+    //根据结果的路径 path 来创建 ReliableCheckpointRDD
     val newRDD = new ReliableCheckpointRDD[T](
       sc, checkpointDirPath.toString, originalRDD.partitioner)
     if (newRDD.partitions.length != originalRDD.partitions.length) {

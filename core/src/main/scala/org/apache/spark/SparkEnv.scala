@@ -51,24 +51,26 @@ import org.apache.spark.util.{AkkaUtils, RpcUtils, Utils}
  *
  * NOTE: This is not intended for external use. This is exposed for Shark and may be made private
  *       in a future release.
+  *
+  * SparkEnv 中包含了一个运行时节点所需要的所有的环境信息
  */
 @DeveloperApi
 class SparkEnv (
     val executorId: String,
     private[spark] val rpcEnv: RpcEnv, // 基于netty的RPC环境
     _actorSystem: ActorSystem, // TODO Remove actorSystem, 基于Akka的RPC环境
-    val serializer: Serializer,
+    val serializer: Serializer, // 序列化和反序列化的工具
     val closureSerializer: Serializer,
-    val cacheManager: CacheManager,
-    val mapOutputTracker: MapOutputTracker,
-    val shuffleManager: ShuffleManager,
-    val broadcastManager: BroadcastManager,
-    val blockTransferService: BlockTransferService,
-    val blockManager: BlockManager,
-    val securityManager: SecurityManager,
+    val cacheManager: CacheManager, // 缓存管理,cacheManager 对 Storage 模块进行了封装， 使得 RDD 可以更加简单的从 Storage 模块读取或者写入数据
+    val mapOutputTracker: MapOutputTracker, // 保存ShuffleMapTask输出的位置信息。其中在Driver上的Tracer是org.apache.spark.MapOutputTrackerMaster，而在Executor上的Tracker是org.apache.spark.MapOutputTrackerWorker，它会从org.apache.spark.MapOutputTrackerMaster获取信息。
+    val shuffleManager: ShuffleManager, // Shuffle 的管理者， 其中 Driver 端会注册 Shuffle 的信息，而 Executor 端会上报和获取 Shuffle 的信息。
+    val broadcastManager: BroadcastManager, // 广播变量的管理者
+    val blockTransferService: BlockTransferService, // Executor读取Shuffle数据的Client。当前支持netty和nio，可以通过spark.shuffle.blockTransferService来设置
+    val blockManager: BlockManager, // 提供了 Storage 模块与其他模块的交互接口，管理 Storage 模块
+    val securityManager: SecurityManager, // Spark 对于认证授权的实现
     val sparkFilesDir: String,
-    val metricsSystem: MetricsSystem,
-    val memoryManager: MemoryManager,
+    val metricsSystem: MetricsSystem, // 用于搜集统计信息
+    val memoryManager: MemoryManager, // 内存管理
     val outputCommitCoordinator: OutputCommitCoordinator,
     val conf: SparkConf) extends Logging {
 

@@ -102,6 +102,8 @@ abstract class RDD[T: ClassTag](
     * :: DeveloperApi ::
     * Implemented by subclasses to compute a given partition.
     * 输入一个Partition,对其代表的数据进行计算
+    *
+    * 将在RDD.computeOrReadCheckpoint()被调用,点判断是否checkpoint,如果之前没有进行checkpoint则调用compute
     */
   @DeveloperApi
   def compute(split: Partition, context: TaskContext): Iterator[T]
@@ -264,8 +266,12 @@ abstract class RDD[T: ClassTag](
    */
   final def iterator(split: Partition, context: TaskContext): Iterator[T] = {
     if (storageLevel != StorageLevel.NONE) {
+      // 如果存储级别不是 NONE，那么先检查是否有缓存；没有缓存则要进 行计算
+      // cacheManager 是 org.apache.spark.CacheManager， 它负责调用 BlockManager 来 管理 RDD 的缓存，如果当前 RDD
+      // 原来计算过并且把结果缓存起来，那么接下 来的运算都可以通过 BlockManager 来直接读取缓存后返回。
       SparkEnv.get.cacheManager.getOrCompute(this, split, context, storageLevel)
     } else {
+      // 如果有 checkpoint，那么直接读取结果；否则直接进行计算
       computeOrReadCheckpoint(split, context)
     }
   }
@@ -296,11 +302,13 @@ abstract class RDD[T: ClassTag](
 
   /**
    * Compute an RDD partition or read it from a checkpoint if the RDD is checkpointing.
+    *
+    * 判断RDD是否checkpoint过, 如果checkpoint过,则返回; 否则调用RDD.compute()进行计算
    */
   private[spark] def computeOrReadCheckpoint(split: Partition, context: TaskContext): Iterator[T] =
   {
     if (isCheckpointedAndMaterialized) {
-      firstParent[T].iterator(split, context)
+      firstParent[T].iterator(split, context) // 查看RDD的依赖中是否有checkpoint
     } else {
       compute(split, context)
     }
@@ -921,6 +929,7 @@ abstract class RDD[T: ClassTag](
 
   /**
    * Return an array that contains all of the elements in this RDD.
+    * Action类型算子,触发SparkContext#runJob(),对spark作业进行计算
    */
   def collect(): Array[T] = withScope {
     val results = sc.runJob(this, (iter: Iterator[T]) => iter.toArray)
@@ -1680,6 +1689,7 @@ abstract class RDD[T: ClassTag](
       if (!doCheckpointCalled) {
         doCheckpointCalled = true
         if (checkpointData.isDefined) {
+          // 那么就调用 org.apache.spark.rdd.RDDCheckpointData#doCheckpoint。
           checkpointData.get.checkpoint()
         } else {
           dependencies.foreach(_.rdd.doCheckpoint())

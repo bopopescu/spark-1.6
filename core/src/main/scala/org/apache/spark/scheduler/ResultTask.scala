@@ -65,7 +65,7 @@ private[spark] class ResultTask[T, U](
 
     metrics = Some(context.taskMetrics)
 
-    // 执行计算,返回结果
+    // 会调用 RDD 的 org.apache.spark.rdd.RDD#iterator,执行计算,返回结果
     func(context, rdd.iterator(partition, context))
   }
 

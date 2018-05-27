@@ -33,17 +33,23 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
   private val loading = new mutable.HashSet[RDDBlockId]
 
   /** Gets or computes an RDD partition. Used by RDD.iterator() when an RDD is cached. */
+  // cacheManager 会通过 getOrCompute 来判断当前的 RDD 是否需要进行计算。
+  // cacheManager会通过RDD的ID和当前计算的Partition的ID向Storage模块的BlockManager来发起查询请求
+  // 如果能够获得Block的信息，那么这个Block的信息会直接返回。否则，代表这个RDD是需要计算的。
   def getOrCompute[T](
       rdd: RDD[T],
       partition: Partition,
       context: TaskContext,
       storageLevel: StorageLevel): Iterator[T] = {
 
+    //获取 RDD 的 BlockId
     val key = RDDBlockId(rdd.id, partition.index)
     logDebug(s"Looking for partition $key")
-    blockManager.get(key) match {
-      case Some(blockResult) =>
+
+    blockManager.get(key) match { //向 BlockManager 查询是否有缓存
+      case Some(blockResult) => //缓存命中
         // Partition is already materialized, so just return its values
+        // 更新统计信息，将缓存作为结果返回
         val existingMetrics = context.taskMetrics
           .getInputMetricsForReadMethod(blockResult.readMethod)
         existingMetrics.incBytesRead(blockResult.bytes)
@@ -55,27 +61,40 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
             delegate.next()
           }
         }
-      case None =>
+      case None => //没有缓存命中，需要计算
         // Acquire a lock for loading this partition
         // If another thread already holds the lock, wait for it to finish return its results
+
+        // 判断当前是否有线程在处理当前的 Partition，如果有那么等待它结束后，
+        // 直接从 BlockManager 中读取处理结果。
+        // 如果没有线程在计算，那么 storedValues 就是 None，否则就是计算的结果
         val storedValues = acquireLockForPartition[T](key)
         if (storedValues.isDefined) {
           return new InterruptibleIterator[T](context, storedValues.get)
         }
 
         // Otherwise, we have to load the partition ourselves
+        // 需要计算
         try {
           logInfo(s"Partition $key not found, computing it")
+
+          // 如果被 checkpoint 过，那么读取 checkpoint 的数据；
+          // 否则调用 rdd 的 compute()开始计算
           val computedValues = rdd.computeOrReadCheckpoint(partition, context)
 
           // If the task is running locally, do not persist the result
+          // Task 是在 Driver 端执行的话就不需要缓存结果，
+          // 这个主要是为了 first() 或者 take()这种仅仅有一个执行阶段的任务的快速执行。
+          // 这类任务由于没有 Shuffle 阶段，直接运行在 Driver 端可能会更省时间。
           if (context.isRunningLocally) {
             return computedValues
           }
 
           // Otherwise, cache the values and keep track of any updates in block statuses
+          // 将计算结果写入到 BlockManager
           val updatedBlocks = new ArrayBuffer[(BlockId, BlockStatus)]
           val cachedValues = putInBlockManager(key, computedValues, storageLevel, updatedBlocks)
+          // 更新任务的统计信息
           val metrics = context.taskMetrics
           val lastUpdatedBlocks = metrics.updatedBlocks.getOrElse(Seq[(BlockId, BlockStatus)]())
           metrics.updatedBlocks = Some(lastUpdatedBlocks ++ updatedBlocks.toSeq)
@@ -84,6 +103,8 @@ private[spark] class CacheManager(blockManager: BlockManager) extends Logging {
         } finally {
           loading.synchronized {
             loading.remove(key)
+            // 如果有其它的线程在等待该 Partition 的处理结果，那么通知它们计算已经完成，
+            // 结果已经存到 BlockManager 中（注意前面那类不会写入 BlockManager的本地任务）。
             loading.notifyAll()
           }
         }

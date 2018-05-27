@@ -55,6 +55,8 @@ private[spark] class ReliableRDDCheckpointData[T: ClassTag](@transient private v
    * This is called immediately after the first action invoked on this RDD has completed.
    */
   protected override def doCheckpoint(): CheckpointRDD[T] = {
+
+    // 数据写入的实现 writeRDDToCheckpointDirectory
     val newRDD = ReliableCheckpointRDD.writeRDDToCheckpointDirectory(rdd, cpDir)
 
     // Optionally clean our checkpoint files if the reference is out of scope

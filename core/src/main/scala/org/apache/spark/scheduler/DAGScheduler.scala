@@ -614,7 +614,7 @@ class DAGScheduler(
    *
    * @throws Exception when the job fails
     *
-    *   被SparkContext调用,有Action类别的RDD算子调用
+    *   被SparkContext调用,由Action类别的RDD算子调用
    */
   def runJob[T, U](
       rdd: RDD[T],

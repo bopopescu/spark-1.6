@@ -28,6 +28,9 @@ private[spark] class CheckpointRDDPartition(val index: Int) extends Partition
 
 /**
  * An RDD that recovers checkpointed data from storage.
+  *
+  * CheckpointRDD 有两个子类实现 LocalCheckpointRDD 和 ReliableCheckpointRDD
+  * 主要看可靠的 ReliableCheckpointRDD, 存储在分布式文件系统中
  */
 private[spark] abstract class CheckpointRDD[T: ClassTag](sc: SparkContext)
   extends RDD[T](sc, Nil) {

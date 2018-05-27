@@ -1847,6 +1847,9 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
    * Run a function on a given set of partitions in an RDD and pass the results to the given
    * handler function. This is the main entry point for all actions in Spark.
     *
+    * 由RDD的Action类型的算子触发runJob(), Action类型算子: http://spark.apache.org/docs/latest/rdd-programming-guide.html#actions
+    * RDD本是惰性求值,触发计算的入口为runJob()
+    *
     * 在RDD的给定分区集上运行函数，并将结果传递给指定的处理函数。 这是Spark中所有操作的主要入口点。
    */
   def runJob[T, U: ClassTag](
@@ -1867,6 +1870,8 @@ class SparkContext(config: SparkConf) extends Logging with ExecutorAllocationCli
     // 调用DAGScheduler,生成task并提交
     dagScheduler.runJob(rdd, cleanedFunc, partitions, callSite, resultHandler, localProperties.get)
     progressBar.foreach(_.finishAll())
+
+    // 首先在 Job 结束后， 会判断是否需要 checkpoint。 如果需要， 那么就调用 org.apache.spark.rdd.RDDCheckpointData#doCheckpoint。
     rdd.doCheckpoint()
   }
 
