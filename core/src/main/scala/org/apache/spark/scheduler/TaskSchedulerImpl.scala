@@ -50,6 +50,8 @@ import org.apache.spark.storage.BlockManagerId
  * SchedulerBackends synchronize on themselves when they want to send events here, and then
  * acquire a lock on us, so we need to make sure that we don't try to lock the backend while
  * we are holding a lock on ourselves.
+  *
+  * TaskScheduler中使用TaskSetManager管理TaskSet，submitTasks方法最终调用CoarseGrainedSchedulerBackend的launchTasks方法将task发送到Executor
  */
 private[spark] class TaskSchedulerImpl(
     val sc: SparkContext,
@@ -159,6 +161,7 @@ private[spark] class TaskSchedulerImpl(
     waitBackendReady()
   }
 
+  // Driver端提交Task给Executor
   override def submitTasks(taskSet: TaskSet) {
     val tasks = taskSet.tasks
     logInfo("Adding task set " + taskSet.id + " with " + tasks.length + " tasks")
@@ -246,11 +249,13 @@ private[spark] class TaskSchedulerImpl(
       availableCpus: Array[Int],
       tasks: Seq[ArrayBuffer[TaskDescription]]) : Boolean = {
     var launchedTask = false
-    for (i <- 0 until shuffledOffers.size) {
-      val execId = shuffledOffers(i).executorId
-      val host = shuffledOffers(i).host
-      if (availableCpus(i) >= CPUS_PER_TASK) {
+    for (i <- 0 until shuffledOffers.size) { //顺序遍历当前存在的 Executor
+      val execId = shuffledOffers(i).executorId //Executor的ID
+      val host = shuffledOffers(i).host //Executor的host名字
+      if (availableCpus(i) >= CPUS_PER_TASK) { //该 Executor 可以被分配任务
         try {
+
+          //核心实现，通过调用TaskSetManager来为Executor分配Task
           for (task <- taskSet.resourceOffer(execId, host, maxLocality)) {
             tasks(i) += task
             val tid = task.taskId
@@ -287,6 +292,7 @@ private[spark] class TaskSchedulerImpl(
       executorIdToHost(o.executorId) = o.host
       executorIdToRunningTaskIds.getOrElseUpdate(o.executorId, HashSet[Long]())
       if (!executorsByHost.contains(o.host)) {
+        //有新的 Executor 加入
         executorsByHost(o.host) = new HashSet[String]()
         executorAdded(o.executorId, o.host)
         newExecAvail = true
@@ -297,25 +303,32 @@ private[spark] class TaskSchedulerImpl(
     }
 
     // Randomly shuffle offers to avoid always placing tasks on the same set of workers.
+    // 为了避免将 Task 集中分配到某些机器，随机打散它们
     val shuffledOffers = Random.shuffle(offers)
     // Build a list of tasks to assign to each worker.
+    // 存储分配好资源的 task
     val tasks = shuffledOffers.map(o => new ArrayBuffer[TaskDescription](o.cores))
     val availableCpus = shuffledOffers.map(o => o.cores).toArray
+
+    //非常重要，获取按照调度策略排序好的 TaskSetManager
     val sortedTaskSets = rootPool.getSortedTaskSetQueue
     for (taskSet <- sortedTaskSets) {
       logDebug("parentName: %s, name: %s, runningTasks: %s".format(
         taskSet.parent.name, taskSet.name, taskSet.runningTasks))
       if (newExecAvail) {
-        taskSet.executorAdded()
+        taskSet.executorAdded() //重新计算该 TaskSetManager 的就近原则
       }
     }
 
     // Take each TaskSet in our scheduling order, and then offer it each node in increasing order
     // of locality levels so that it gets a chance to launch local tasks on all of them.
     // NOTE: the preferredLocality order: PROCESS_LOCAL, NODE_LOCAL, NO_PREF, RACK_LOCAL, ANY
+    //为从rootPool里获取的TaskSetManager列表分配资源。
+    //分配的原则是就近原则，优先分配顺序PROCESS_LOCAL,NODE_LOCAL,NO_PREF,RACK_LOCAL,ANY
     var launchedTask = false
     for (taskSet <- sortedTaskSets; maxLocality <- taskSet.myLocalityLevels) {
       do {
+        // 调用resourceOfferSingleTaskSet选择Executor启动Task
         launchedTask = resourceOfferSingleTaskSet(
             taskSet, maxLocality, shuffledOffers, availableCpus, tasks)
       } while (launchedTask)
@@ -346,6 +359,8 @@ private[spark] class TaskSchedulerImpl(
               }
             }
             if (TaskState.isFinished(state)) {
+              //如果Task的状态是FINISHED或者FAILED或者KILLED或者LOST
+              //该Task就认为执行结束，那么清理本地的数据结构
               cleanupTaskState(tid)
               taskSet.removeRunningTask(tid)
               if (state == TaskState.FINISHED) {

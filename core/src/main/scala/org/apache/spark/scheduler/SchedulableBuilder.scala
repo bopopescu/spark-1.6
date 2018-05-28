@@ -29,6 +29,10 @@ import org.apache.spark.util.Utils
  * An interface to build Schedulable tree
  * buildPools: build the tree nodes(pools)
  * addTaskSetManager: build the leaf nodes(TaskSetManagers)
+  *
+  * schedulableBuilder是Application级别的调度器，现在支持两种调度策略，
+  * FIFO（FistInFirstOut，先进先出）和FAIR（公平调度）。
+  * 调度策略可以通过spark.scheduler.mode设置，默认是FIFO。
  */
 private[spark] trait SchedulableBuilder {
   def rootPool: Pool

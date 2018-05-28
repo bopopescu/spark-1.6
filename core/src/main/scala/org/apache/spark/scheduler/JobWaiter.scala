@@ -50,12 +50,13 @@ private[spark] class JobWaiter[T](
   }
 
   override def taskSucceeded(index: Int, result: Any): Unit = synchronized {
+    //调用用户逻辑处理结果
     if (_jobFinished) {
       throw new UnsupportedOperationException("taskSucceeded() called on a finished JobWaiter")
     }
     resultHandler(index, result.asInstanceOf[T])
     finishedTasks += 1
-    if (finishedTasks == totalTasks) {
+    if (finishedTasks == totalTasks) {//该Job结束了会通知 org.apache.spark.scheduler.JobWaiter#awaitResult 任务结束
       _jobFinished = true
       jobResult = JobSucceeded
       this.notifyAll()
