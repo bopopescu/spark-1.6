@@ -210,6 +210,7 @@ private[deploy] class Worker(
     cancelLastRegistrationRetry()
   }
 
+  // 向所有的Master注册(高可用集群)
   private def tryRegisterAllMasters(): Array[JFuture[_]] = {
     masterRpcAddresses.map { masterAddress =>
       registerMasterThreadPool.submit(new Runnable {
@@ -652,9 +653,9 @@ private[deploy] class Worker(
     cancelLastRegistrationRetry()
     forwordMessageScheduler.shutdownNow()
     registerMasterThreadPool.shutdownNow()
-    executors.values.foreach(_.kill())
-    drivers.values.foreach(_.kill())
-    shuffleService.stop()
+    executors.values.foreach(_.kill()) //杀死所有的 Executor
+    drivers.values.foreach(_.kill()) //杀死所有的 Driver Client
+    shuffleService.stop() //停止 Shuffle 服务
     webUi.stop()
     metricsSystem.stop()
   }

@@ -30,6 +30,7 @@ trait LeaderElectionAgent {
   def stop() {} // to avoid noops in implementations.
 }
 
+// 实现多个Master可以选举出一个Leader
 @DeveloperApi
 trait LeaderElectable {
   def electedLeader()
@@ -39,5 +40,5 @@ trait LeaderElectable {
 /** Single-node implementation of LeaderElectionAgent -- we're initially and always the leader. */
 private[spark] class MonarchyLeaderAgent(val masterInstance: LeaderElectable)
   extends LeaderElectionAgent {
-  masterInstance.electedLeader()
+  masterInstance.electedLeader() //直接将传入的 Master 设置为 Leader
 }

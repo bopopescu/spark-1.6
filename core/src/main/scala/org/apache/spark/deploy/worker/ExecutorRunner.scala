@@ -35,6 +35,8 @@ import org.apache.spark.{Logging, SecurityManager, SparkConf}
  * This is currently only used in standalone mode.
   *
   * 管理Executor的执行,仅仅自在standalone模式适用
+  * 看生命周期中run() 调用 fetchAndRunExecutor()
+  * 核心在fetchAndRunExecutor()中调用linux命令启动 [[org.apache.spark.executor.CoarseGrainedExecutorBackend]]
  */
 private[deploy] class ExecutorRunner(
     val appId: String,
@@ -141,7 +143,7 @@ private[deploy] class ExecutorRunner(
    * Download and run the executor described in our ApplicationDescription
     *
     * fetchAndRunExecutor方法中将收到的信息拼接为Linux命令，
-    * 然后使用ProcessBuilder执行Linux命令启动CoarseGrainedExecutorBackend，和启动Driver的方式如出一辙
+    * 然后使用ProcessBuilder执行Linux命令启动 CoarseGrainedExecutorBackend，和启动Driver的方式如出一辙
    */
   private def fetchAndRunExecutor() {
     try {

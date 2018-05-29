@@ -144,6 +144,7 @@ private[spark] class Executor(
       attemptNumber: Int,
       taskName: String,
       serializedTask: ByteBuffer): Unit = {
+    // 看一下 org.apache.spark.executor.Executor.TaskRunner#run 的实现
     val tr = new TaskRunner(context, taskId = taskId, attemptNumber = attemptNumber, taskName,
       serializedTask)
     runningTasks.put(taskId, tr)
@@ -247,8 +248,9 @@ private[spark] class Executor(
         logDebug("Task " + taskId + "'s epoch is " + task.epoch)
         env.mapOutputTracker.updateEpoch(task.epoch)
 
-        /* 2.运行Task阶段 */
+        /* 2.执行Task阶段 */
         // Run the actual task and measure its runtime.
+        // 开始执行任务，并且记录任务的耗时情况
         taskStart = System.currentTimeMillis()
         var threwException = true
         val (value, accumUpdates) = try {

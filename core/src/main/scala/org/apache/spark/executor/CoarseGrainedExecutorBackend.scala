@@ -42,7 +42,7 @@ import org.apache.spark.util.{ThreadUtils, SignalLogger, Utils}
   * ExecutorBackend有抽象方法statusUpdate，负责将Executor的计算结果返回给Driver。
   *
   * CoarseGrainedExecutorBackend是spark运行期的一个进程，Executor运行在该进程内。
-  * 由org.apache.spark.deploy.worker.ExecutorRunner#fetchAndRunExecutor()方法调用linux命令启动main()
+  * 由[[org.apache.spark.deploy.worker.ExecutorRunner#fetchAndRunExecutor()]]方法调用linux命令启动main()
   */
 private[spark] class CoarseGrainedExecutorBackend(
     override val rpcEnv: RpcEnv,
@@ -72,8 +72,8 @@ private[spark] class CoarseGrainedExecutorBackend(
       // This is a very fast action so we can use "ThreadUtils.sameThread"
       driver = Some(ref)
 
-      // 向Driver发送RegisterExecutor消息,并收到回答RegisterExecutorResponse
       ref.ask[RegisterExecutorResponse](
+        // 向Driver发送RegisterExecutor消息,并收到回答RegisterExecutorResponse
         RegisterExecutor(executorId, self, hostPort, cores, extractLogUrls))
     }(ThreadUtils.sameThread).onComplete {
       // This is a very fast action so we can use "ThreadUtils.sameThread"

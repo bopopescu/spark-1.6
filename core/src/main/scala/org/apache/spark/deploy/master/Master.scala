@@ -178,24 +178,25 @@ private[deploy] class Master(
 
     val serializer = new JavaSerializer(conf)
     val (persistenceEngine_, leaderElectionAgent_) = RECOVERY_MODE match {
-      case "ZOOKEEPER" =>
+      case "ZOOKEEPER" => //使用 ZooKeeper 的方式
         logInfo("Persisting recovery state to ZooKeeper")
         val zkFactory =
           new ZooKeeperRecoveryModeFactory(conf, serializer)
         (zkFactory.createPersistenceEngine(), zkFactory.createLeaderElectionAgent(this))
-      case "FILESYSTEM" =>
+      case "FILESYSTEM" => //使用文件系统的方式
         val fsFactory =
           new FileSystemRecoveryModeFactory(conf, serializer)
         (fsFactory.createPersistenceEngine(), fsFactory.createLeaderElectionAgent(this))
-      case "CUSTOM" =>
+      case "CUSTOM" => //用户自定义
         val clazz = Utils.classForName(conf.get("spark.deploy.recoveryMode.factory"))
         val factory = clazz.getConstructor(classOf[SparkConf], classOf[Serializer])
           .newInstance(conf, serializer)
           .asInstanceOf[StandaloneRecoveryModeFactory]
         (factory.createPersistenceEngine(), factory.createLeaderElectionAgent(this))
-      case _ =>
+      case _ => //无
         (new BlackHolePersistenceEngine(), new MonarchyLeaderAgent(this))
     }
+    //persistenceEngine通过persist(name:String, obj:Object)实现了元数据持久化,通过readPersistedData()来恢复元数据
     persistenceEngine = persistenceEngine_
     leaderElectionAgent = leaderElectionAgent_
   }
@@ -232,9 +233,12 @@ private[deploy] class Master(
   // 异步方法,只接受不回应
   // receive方法接收Worker的EndPoint.send 或者Master自己的EndpointRef send方法发送的信息
   override def receive: PartialFunction[Any, Unit] = {
-    // leader选举,recovery和各种状态查询
+
+    //处理当前的Master被选举为Leader的消息
     case ElectedLeader => {
+      // 读取集群当前的运行的 Application，Driver Client 和 Worker
       val (storedApps, storedDrivers, storedWorkers) = persistenceEngine.readPersistedData(rpcEnv)
+      //如果所有的元数据都是空的，那么就不需要恢复
       state = if (storedApps.isEmpty && storedDrivers.isEmpty && storedWorkers.isEmpty) {
         RecoveryState.ALIVE
       } else {
@@ -242,7 +246,10 @@ private[deploy] class Master(
       }
       logInfo("I have been elected leader! New state: " + state)
       if (state == RecoveryState.RECOVERING) {
+        //开始恢复集群之前的状态，恢复实际上就是通知Application和Worker
+        //Master已经更改
         beginRecovery(storedApps, storedDrivers, storedWorkers)
+        //在WORKER_TIMEOUT毫秒后，尝试将恢复标记为完成。
         recoveryCompletionTask = forwardMessageThread.schedule(new Runnable {
           override def run(): Unit = Utils.tryLogNonFatalError {
             self.send(CompleteRecovery)
@@ -251,6 +258,7 @@ private[deploy] class Master(
       }
     }
 
+    // Master挂掉后重新完全恢复
     case CompleteRecovery => completeRecovery()
 
     case RevokedLeadership => {
@@ -264,16 +272,24 @@ private[deploy] class Master(
       // TODO Prevent repeated registrations from some driver
       if (state == RecoveryState.STANDBY) {
         // ignore, don't send response
+        // Standby 的 Master 会忽略注册消息
+        // 如果 AppClient 发送请求到 Standby 的 Master，
+        // 会触发有超时机制（默认是 20s），超时会重试。
       } else {
         logInfo("Registering app " + description.name)
         val app = createApplication(description, driver)
+
         // 调用registerApplication注册app
         registerApplication(app)
         logInfo("Registered app " + description.name + " with ID " + app.id)
+
+        //持久化 app 的元数据信息，可以选择持久化到 ZooKeeper，本地文件系统，或者不持久化
         persistenceEngine.addApplication(app)
 
         //给Driver端发送,app已被注册
         driver.send(RegisteredApplication(app.id, self))
+
+        //为处于待分配资源的 Application 分配资源。在每次有新的Application 加入或者新的资源加入时都会调用 schedule 进行调度
         schedule()
       }
     }
@@ -596,23 +612,27 @@ private[deploy] class Master(
     state = RecoveryState.COMPLETING_RECOVERY
 
     // Kill off any workers and apps that didn't respond to us.
+    //将所有未响应的 Worker 和 Application 删除
     workers.filter(_.state == WorkerState.UNKNOWN).foreach(removeWorker)
     apps.filter(_.state == ApplicationState.UNKNOWN).foreach(finishApplication)
 
     // Reschedule drivers which were not claimed by any workers
+    //对于未分配Worker的Driver Client（有可能Worker已经挂掉），
+    //确定是否需要重新启动
     drivers.filter(_.worker.isEmpty).foreach { d =>
       logWarning(s"Driver ${d.id} was not found after master recovery")
-      if (d.desc.supervise) {
+      if (d.desc.supervise) { //需要重新启动 Driver Client
         logWarning(s"Re-launching ${d.id}")
         relaunchDriver(d)
-      } else {
+      } else { //将没有设置重启的 Driver Client 删除
         removeDriver(d.id, DriverState.ERROR, None)
         logWarning(s"Did not re-launch ${d.id} because it was not supervised")
       }
     }
 
+    //设置 Master 的状态为 ALIVE，此后 Master 开始正常工作
     state = RecoveryState.ALIVE
-    schedule()
+    schedule() //开始新一轮的资源调度
     logInfo("Recovery complete - resuming operations!")
   }
 
@@ -776,6 +796,7 @@ private[deploy] class Master(
    */
   private def schedule(): Unit = {
     if (state != RecoveryState.ALIVE) {
+      // Master切换,还没有恢复,直接退出
       return
     }
     // Drivers take strict precedence over executors
@@ -814,6 +835,9 @@ private[deploy] class Master(
   // 启动Executor
   private def launchExecutor(worker: WorkerInfo, exec: ExecutorDesc): Unit = {
     logInfo("Launching executor " + exec.fullId + " on worker " + worker.id)
+
+    //更新worker的信息，可用core数和memory数减去本次分配的executor占用的，
+    //因此Worker的信息无需Worker主动汇报
     worker.addExecutor(exec)
 
     // 给Worker发送LaunchExecutor信息

@@ -140,7 +140,7 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
 
     override def receiveAndReply(context: RpcCallContext): PartialFunction[Any, Unit] = {
 
-      // 接受Executor的注册
+       /** 接受[[org.apache.spark.executor.CoarseGrainedExecutorBackend#onStart()]] 的注册*/
       // Driver中先修改Executor信息有关的集合和变量，即注册Executor到Driver，
       // Driver使用executorDataMap集合保存Executor信息。然后返回消息RegisteredExecutor给CoarseGrainedExecutorBackend。
       case RegisterExecutor(executorId, executorRef, hostPort, cores, logUrls) =>
@@ -175,6 +175,8 @@ class CoarseGrainedSchedulerBackend(scheduler: TaskSchedulerImpl, val rpcEnv: Rp
           context.reply(RegisteredExecutor(executorAddress.host))
           listenerBus.post(
             SparkListenerExecutorAdded(System.currentTimeMillis(), executorId, data))
+
+          // 在Executor上启动Task
           makeOffers()
         }
 

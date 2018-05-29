@@ -19,6 +19,7 @@ package org.apache.spark.deploy
 
 import java.net.URI
 
+//包含了一个 Application 的所有信息
 private[spark] case class ApplicationDescription(
     name: String,
     maxCores: Option[Int],
