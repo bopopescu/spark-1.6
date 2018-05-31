@@ -194,6 +194,7 @@ private[spark] class BlockManager(
       blockManagerId
     }
 
+    //注册的信息包括blockManagerId(标识了Slave的ExecutorID,Hostname和Port),节点的最大可用内存数
     master.registerBlockManager(blockManagerId, maxMemory, slaveEndpoint)
 
     // Register Executors' configuration with the local shuffle service, if one should exist.

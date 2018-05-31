@@ -55,6 +55,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
       blockManager.wrapForCompression(blockId, inputStream)
     }
 
+    //序列化
     val ser = Serializer.getSerializer(dep.serializer)
     val serializerInstance = ser.newInstance()
 
@@ -78,12 +79,13 @@ private[spark] class BlockStoreShuffleReader[K, C](
     // An interruptible iterator must be used here in order to support task cancellation
     val interruptibleIter = new InterruptibleIterator[(Any, Any)](context, metricIter)
 
+    // 处理结果
     val aggregatedIter: Iterator[Product2[K, C]] = if (dep.aggregator.isDefined) {
-      if (dep.mapSideCombine) {
+      if (dep.mapSideCombine) { //需要 map side 的聚合
         // We are reading values that are already combined
         val combinedKeyValuesIterator = interruptibleIter.asInstanceOf[Iterator[(K, C)]]
         dep.aggregator.get.combineCombinersByKey(combinedKeyValuesIterator, context)
-      } else {
+      } else { // 无需聚合操作
         // We don't know the value type, but also don't care -- the dependency *should*
         // have made sure its compatible w/ this aggregator, which will convert the value
         // type to the combined type C
@@ -96,11 +98,11 @@ private[spark] class BlockStoreShuffleReader[K, C](
     }
 
     // Sort the output if there is a sort ordering defined.
-    dep.keyOrdering match {
-      case Some(keyOrd: Ordering[K]) =>
+    dep.keyOrdering match { //判断是否需要排序
+      case Some(keyOrd: Ordering[K]) => //对于需要排序的情况
         // Create an ExternalSorter to sort the data. Note that if spark.shuffle.spill is disabled,
         // the ExternalSorter won't spill to disk.
-        // reduce端使用ExternalSorter排序数据
+        // 使用 ExternalSorter 进行排序，注意如果 spark.shuffle.spill 是 false，那么数据是不会写入到硬盘的
         val sorter =
           new ExternalSorter[K, C, C](context, ordering = Some(keyOrd), serializer = Some(ser))
         sorter.insertAll(aggregatedIter)
@@ -109,7 +111,7 @@ private[spark] class BlockStoreShuffleReader[K, C](
         context.internalMetricsToAccumulators(
           InternalAccumulator.PEAK_EXECUTION_MEMORY).add(sorter.peakMemoryUsedBytes)
         CompletionIterator[Product2[K, C], Iterator[Product2[K, C]]](sorter.iterator, sorter.stop())
-      case None =>
+      case None => //无需排序
         aggregatedIter
     }
   }

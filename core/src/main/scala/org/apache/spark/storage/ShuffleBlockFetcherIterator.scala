@@ -190,13 +190,16 @@ final class ShuffleBlockFetcherIterator(
       totalBlocks += blockInfos.size
       if (address.executorId == blockManager.blockManagerId.executorId) {
         // Filter out zero-sized blocks
+        // Block 在本地，需要过滤大小为 0 的 block。
         localBlocks ++= blockInfos.filter(_._2 != 0).map(_._1)
         numBlocksToFetch += localBlocks.size
-      } else {
+      } else { //需要远程获取的 Block
         val iterator = blockInfos.iterator
         var curRequestSize = 0L
         var curBlocks = new ArrayBuffer[(BlockId, Long)]
         while (iterator.hasNext) {
+          // blockId 是 org.apache.spark.storage.ShuffleBlockId，
+          // 格式："shuffle_" + shuffleId + "_" + mapId + "_" + reduceId
           val (blockId, size) = iterator.next()
           // Skip empty blocks
           if (size > 0) {
@@ -209,6 +212,7 @@ final class ShuffleBlockFetcherIterator(
           }
           if (curRequestSize >= targetRequestSize) {
             // Add this FetchRequest
+            // 当前总的 size 已经可以批量放入一次 request 中
             remoteRequests += new FetchRequest(address, curBlocks)
             curBlocks = new ArrayBuffer[(BlockId, Long)]
             logDebug(s"Creating fetch request of $curRequestSize at $address")
@@ -217,6 +221,7 @@ final class ShuffleBlockFetcherIterator(
         }
         // Add in the final request
         if (curBlocks.nonEmpty) {
+          // 剩余的请求组成一次 request
           remoteRequests += new FetchRequest(address, curBlocks)
         }
       }

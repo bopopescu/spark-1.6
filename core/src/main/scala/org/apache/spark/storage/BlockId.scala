@@ -50,6 +50,7 @@ sealed abstract class BlockId {
 
 @DeveloperApi
 case class RDDBlockId(rddId: Int, splitIndex: Int) extends BlockId {
+  // "rdd_" + rddId + "_" + partitionId
   override def name: String = "rdd_" + rddId + "_" + splitIndex
 }
 

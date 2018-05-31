@@ -141,6 +141,7 @@ class BlockManagerMasterEndpoint(
 
     // Ask the slaves to remove the RDD, and put the result in a sequence of Futures.
     // The dispatcher is used as an implicit argument into the Future sequence construction.
+    // 删除 Slave 上的 RDD 的信息
     val removeMsg = RemoveRdd(rddId)
     Future.sequence(
       blockManagerInfo.values.map { bm =>
